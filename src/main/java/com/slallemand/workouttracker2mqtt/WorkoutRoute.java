@@ -1,4 +1,4 @@
-package com.slallemand.workout2mqtt;
+package com.slallemand.workouttracker2mqtt;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import org.apache.camel.Exchange;
