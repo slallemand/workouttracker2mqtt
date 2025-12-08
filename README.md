@@ -10,6 +10,11 @@ A Quarkus-based application that connects to [workout-tracker](https://github.co
 - **Configurable Workout Types**: Filter and monitor specific workout types (e.g., running, cycling)
 - **Automatic Updates**: Periodically fetches the latest workouts and totals from workout-tracker
 
+## Disclaimer
+
+This code was primarily developed as an experiment with vibe-coding (AI-assisted development). While it works fine for its intended purpose, the implementation may not be optimal. The code structure, error handling, and performance characteristics reflect this experimental approach. Use at your own discretion and feel free to improve it!
+
+
 ## Quick Start with Podman / Docker
 
 The application can be run using a container image. You need to provide the following mandatory environment variables:
