@@ -1,4 +1,4 @@
-# workout2mqtt
+# workouttracker2mqtt
 
 This project uses Quarkus, the Supersonic Subatomic Java Framework.
 

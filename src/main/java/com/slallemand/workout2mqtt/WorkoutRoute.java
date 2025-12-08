@@ -88,6 +88,58 @@ public class WorkoutRoute extends RouteBuilder {
     }
 
     /**
+     * Publishes a message to MQTT with retry logic. Retries until successful.
+     * 
+     * @param topic MQTT topic to publish to
+     * @param message Message body to publish
+     * @param description Description of what is being published (for logging)
+     * @param maxRetryDelay Maximum delay between retries in milliseconds (default: 30000)
+     * @param initialRetryDelay Initial delay between retries in milliseconds (default: 1000)
+     */
+    private void publishToMqttWithRetry(String topic, String message, String description, long maxRetryDelay, long initialRetryDelay) {
+        String mqttEndpoint = "paho:" + topic + 
+            "?brokerUrl=" + mqttBrokerUrl + 
+            "&clientId=" + mqttClientId + 
+            "&qos=" + mqttQos + 
+            "&retained=" + mqttRetained + 
+            "&userName=" + mqttBrokerUsername + 
+            "&password=" + mqttBrokerPassword + 
+            "&lazyStartProducer=true";
+        
+        long retryDelay = initialRetryDelay;
+        int attemptCount = 0;
+        boolean success = false;
+        
+        while (!success) {
+            attemptCount++;
+            try {
+                getContext().createProducerTemplate().sendBody(mqttEndpoint, message);
+                if (attemptCount > 1) {
+                    log.info("Successfully published " + description + " to MQTT after " + attemptCount + " attempts");
+                } else {
+                    log.debug("Published " + description + " to MQTT topic: " + topic);
+                }
+                success = true;
+            } catch (Exception e) {
+                log.warn("MQTT broker unavailable for " + description + " (attempt " + attemptCount + "): " + e.getMessage() + 
+                    ". Retrying in " + retryDelay + "ms...");
+                
+                // Wait before retrying
+                try {
+                    Thread.sleep(retryDelay);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    log.error("Interrupted while waiting to retry MQTT connection");
+                    throw new RuntimeException("MQTT retry interrupted", ie);
+                }
+                
+                // Exponential backoff with maximum delay
+                retryDelay = Math.min(retryDelay * 2, maxRetryDelay);
+            }
+        }
+    }
+
+    /**
      * Publishes Home Assistant MQTT discovery configuration for a sensor
      */
     private void publishHomeAssistantDiscovery(org.apache.camel.Exchange exchange, String sensorId, String sensorName, String unit, 
@@ -379,27 +431,13 @@ public class WorkoutRoute extends RouteBuilder {
                         // Set body to indicate processing is complete
                         exchange.getIn().setBody("processed");
                     })
-                    // Step 3: Send latest workout for each type to MQTT
+                    // Step 3: Send latest workout for each type to MQTT (with retry logic)
                     .process(exchange -> {
                         for (String workoutType : selectedTypes) {
                             String workoutJson = exchange.getProperty("latest_workout_" + workoutType.toLowerCase(), String.class);
                             if (workoutJson != null) {
-                                try {
-                                    String typeTopic = mqttTopic + "/" + workoutType.toLowerCase();
-                                    String mqttEndpoint = "paho:" + typeTopic + 
-                                        "?brokerUrl=" + mqttBrokerUrl + 
-                                        "&clientId=" + mqttClientId + 
-                                        "&qos=" + mqttQos + 
-                                        "&retained=" + mqttRetained + 
-                                        "&userName=" + mqttBrokerUsername + 
-                                        "&password=" + mqttBrokerPassword + 
-                                        "&lazyStartProducer=true";
-                                    getContext().createProducerTemplate().sendBody(mqttEndpoint, workoutJson);
-                                    log.debug("Latest " + workoutType + " workout sent to MQTT topic: " + typeTopic);
-                                } catch (Exception e) {
-                                    log.warn("MQTT broker unavailable for " + workoutType + " workout: " + e.getMessage());
-                                    System.out.println("WORKOUT (" + workoutType + "): " + workoutJson);
-                                }
+                                String typeTopic = mqttTopic + "/" + workoutType.toLowerCase();
+                                publishToMqttWithRetry(typeTopic, workoutJson, "latest " + workoutType + " workout", 30000, 1000);
                             }
                         }
                     })
@@ -425,26 +463,10 @@ public class WorkoutRoute extends RouteBuilder {
                     return statusCode != null && statusCode < 300;
                 })
                     .log("Totals retrieved successfully, sending to MQTT")
-                    // Send totals to MQTT, or write to stdout if MQTT unavailable
+                    // Send totals to MQTT (with retry logic)
                     .process(exchange -> {
                         String body = exchange.getIn().getBody(String.class);
-                        try {
-                            // Try to send to MQTT using a direct producer template (same as workouts route)
-                            String mqttEndpoint = "paho:" + mqttTotalsTopic + 
-                                "?brokerUrl=" + mqttBrokerUrl + 
-                                "&clientId=" + mqttClientId + 
-                                "&qos=" + mqttQos + 
-                                "&retained=" + mqttRetained + 
-                                "&userName=" + mqttBrokerUsername + 
-                                "&password=" + mqttBrokerPassword + 
-                                "&lazyStartProducer=true";
-                            getContext().createProducerTemplate().sendBody(mqttEndpoint, body);
-                            // log.info("Totals sent to MQTT topic: " + mqttTotalsTopic);
-                        } catch (Exception e) {
-                            // MQTT unavailable, write to stdout
-                            log.warn("MQTT broker unavailable, writing to standard output: " + e.getMessage());
-                            System.out.println(body);
-                        }
+                        publishToMqttWithRetry(mqttTotalsTopic, body, "totals", 30000, 1000);
                     })
                 .otherwise()
                     .log("Failed to fetch totals. Status: ${header.CamelHttpResponseCode}, Body: ${body}")
