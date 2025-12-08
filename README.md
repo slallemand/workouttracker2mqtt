@@ -70,7 +70,7 @@ This application is available as a Home Assistant add-on for easy installation a
 
 ### Configuration
 
-The add-on supports all the same configuration options as the Docker/Podman version. See the [addon README](addon/workouttracker2mqtt/README.md) for detailed configuration options.
+The add-on supports all the same configuration options as the Docker/Podman version. See the [addon README](workouttracker2mqtt/README.md) for detailed configuration options.
 
 ## Home Assistant Integration
 
