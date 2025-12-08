@@ -49,6 +49,29 @@ podman run -d \
   ghcr.io/slallemand/workouttracker2mqtt:latest
 ```
 
+## Installation as Home Assistant Add-on
+
+This application is available as a Home Assistant add-on for easy installation and management.
+
+### Installation Steps
+
+1. In Home Assistant, go to **Supervisor** → **Add-on Store**
+2. Click the three-dot menu (⋮) in the top right corner
+3. Select **Repositories**
+4. Add the repository URL: `https://github.com/slallemand/workouttracker2mqtt`
+5. Click **Add** and then **Close**
+6. Find **Workout Tracker to MQTT** in the add-on store
+7. Click **Install**
+8. Configure the required options:
+   - **workouttracker_api_server_url**: Base URL of your workout-tracker instance (e.g., `http://workout-tracker:8080`)
+   - **workouttracker_api_key**: API key with "Bearer " prefix (e.g., `Bearer your-api-key-here`)
+   - **mqtt_broker_url**: MQTT broker URL (use `tcp://core-mosquitto:1883` for Home Assistant's built-in broker)
+9. Click **Start** to launch the add-on
+
+### Configuration
+
+The add-on supports all the same configuration options as the Docker/Podman version. See the [addon README](addon/workouttracker2mqtt/README.md) for detailed configuration options.
+
 ## Home Assistant Integration
 
 When `HOMEASSISTANT_DISCOVERY_ENABLED` is set to `true` (default), the application automatically publishes Home Assistant MQTT autodiscovery configuration messages. This allows Home Assistant to automatically discover and configure sensors for:
