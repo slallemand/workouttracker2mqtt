@@ -20,19 +20,19 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class WorkoutRoute extends RouteBuilder {
 
-    @ConfigProperty(name = "rest.api.server.url")
+    @ConfigProperty(name = "workouttracker.api.server.url")
     String restApiServerUrl;
 
-    @ConfigProperty(name = "rest.api.endpoint.workouts")
+    @ConfigProperty(name = "workouttracker.api.endpoint.workouts")
     String restApiEndpoint;
 
-    @ConfigProperty(name = "rest.api.endpoint.totals")
+    @ConfigProperty(name = "workouttracker.api.endpoint.totals")
     String restApiTotalsEndpoint;
 
-    @ConfigProperty(name = "rest.api.key")
+    @ConfigProperty(name = "workouttracker.api.key")
     String restApiKey;
 
-    @ConfigProperty(name = "rest.api.key.header.name", defaultValue = "Authorization")
+    @ConfigProperty(name = "workouttracker.api.key.header.name", defaultValue = "Authorization")
     String apiKeyHeaderName;
 
     @ConfigProperty(name = "mqtt.broker.url")
