@@ -29,6 +29,9 @@ public class WorkoutRoute extends RouteBuilder {
     @ConfigProperty(name = "workouttracker.api.endpoint.totals")
     String restApiTotalsEndpoint;
 
+    @ConfigProperty(name = "workouttracker.api.endpoint.statistics")
+    String restApiStatisticsEndpoint;
+
     @ConfigProperty(name = "workouttracker.api.key")
     String restApiKey;
 
@@ -46,6 +49,9 @@ public class WorkoutRoute extends RouteBuilder {
 
     @ConfigProperty(name = "mqtt.broker.topic.totals")
     String mqttTotalsTopic;
+
+    @ConfigProperty(name = "mqtt.broker.topic.statistics")
+    String mqttStatisticsTopic;
 
     @ConfigProperty(name = "mqtt.broker.qos", defaultValue = "1")
     int mqttQos;
@@ -141,6 +147,7 @@ public class WorkoutRoute extends RouteBuilder {
 
     /**
      * Publishes Home Assistant MQTT discovery configuration for a sensor
+     * Uses retry logic to ensure the message is published even if MQTT broker is temporarily unavailable
      */
     private void publishHomeAssistantDiscovery(org.apache.camel.Exchange exchange, String sensorId, String sensorName, String unit, 
                                                 String valueTemplate, String stateTopic, String deviceClass) {
@@ -187,8 +194,39 @@ public class WorkoutRoute extends RouteBuilder {
                 "&password=" + mqttBrokerPassword + 
                 "&lazyStartProducer=true";
             
-            exchange.getContext().createProducerTemplate().sendBody(mqttEndpoint, configJson);
-            log.info("Published Home Assistant discovery for: " + sensorName + " (topic: " + discoveryTopic + ")");
+            // Use retry logic to ensure discovery messages are published
+            long retryDelay = 1000; // 1 second
+            long maxRetryDelay = 30000; // 30 seconds
+            int attemptCount = 0;
+            boolean success = false;
+            
+            while (!success) {
+                attemptCount++;
+                try {
+                    exchange.getContext().createProducerTemplate().sendBody(mqttEndpoint, configJson);
+                    if (attemptCount > 1) {
+                        log.info("Successfully published Home Assistant discovery for " + sensorName + " after " + attemptCount + " attempts");
+                    } else {
+                        log.debug("Published Home Assistant discovery for: " + sensorName + " (topic: " + discoveryTopic + ")");
+                    }
+                    success = true;
+                } catch (Exception e) {
+                    log.warn("MQTT broker unavailable for Home Assistant discovery (" + sensorName + ") (attempt " + attemptCount + "): " + e.getMessage() + 
+                        ". Retrying in " + retryDelay + "ms...");
+                    
+                    // Wait before retrying
+                    try {
+                        Thread.sleep(retryDelay);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        log.error("Interrupted while waiting to retry Home Assistant discovery");
+                        throw new RuntimeException("Home Assistant discovery retry interrupted", ie);
+                    }
+                    
+                    // Exponential backoff with maximum delay
+                    retryDelay = Math.min(retryDelay * 2, maxRetryDelay);
+                }
+            }
         } catch (Exception e) {
             log.error("Failed to publish Home Assistant discovery for " + sensorName + ": " + e.getMessage(), e);
         }
@@ -312,6 +350,32 @@ public class WorkoutRoute extends RouteBuilder {
                         mqttTotalsTopic,
                         "duration"
                     );
+                    
+                    // Discovery for statistics data (total distance and workouts by type)
+                    for (String workoutType : selectedTypes) {
+                        String typeId = workoutType.toLowerCase().replaceAll("[^a-z0-9]", "_");
+                        String statisticsTopic = mqttStatisticsTopic + "/" + workoutType.toLowerCase();
+                        
+                        publishHomeAssistantDiscovery(
+                            exchange,
+                            "statistics_" + typeId + "_total_distance",
+                            capitalize(workoutType) + " Total Distance",
+                            "km",
+                            "{{ value_json.totalDistance | default(0) / 1000 }}",
+                            statisticsTopic,
+                            "distance"
+                        );
+                        
+                        publishHomeAssistantDiscovery(
+                            exchange,
+                            "statistics_" + typeId + "_total_workouts",
+                            capitalize(workoutType) + " Total Workouts",
+                            "",
+                            "{{ value_json.totalWorkouts | default(0) }}",
+                            statisticsTopic,
+                            null
+                        );
+                    }
                     
                     log.info("Home Assistant discovery configurations published");
                 });
@@ -470,6 +534,99 @@ public class WorkoutRoute extends RouteBuilder {
                     })
                 .otherwise()
                     .log("Failed to fetch totals. Status: ${header.CamelHttpResponseCode}, Body: ${body}")
+            .endChoice();
+
+        // Third route: Fetch statistics from /api/v1/statistics endpoint and aggregate by workout type
+        String statisticsUrl = restApiServerUrl + restApiStatisticsEndpoint;
+        
+        fromF("timer:statistics-timer?period=%d&delay=%d", timerPeriod, timerDelay + 10000)
+            .log("Fetching statistics from REST API: " + statisticsUrl)
+            // Set the API key header
+            .setHeader(apiKeyHeaderName, constant(restApiKey))
+            .setHeader(Exchange.HTTP_METHOD, constant("GET"))
+            // Fetch statistics from API
+            .toF("%s?bridgeEndpoint=true&throwExceptionOnFailure=false", statisticsUrl)
+            .log("Received statistics response")
+            // Check if API call was successful
+            .choice()
+                .when(exchange -> {
+                    Integer statusCode = exchange.getIn().getHeader(Exchange.HTTP_RESPONSE_CODE, Integer.class);
+                    return statusCode != null && statusCode < 300;
+                })
+                    .log("Statistics retrieved successfully, processing and sending to MQTT")
+                    // Process statistics: aggregate total distance and workouts by type
+                    .process(exchange -> {
+                        String body = exchange.getIn().getBody(String.class);
+                        ObjectMapper mapper = new ObjectMapper();
+                        JsonNode response = mapper.readTree(body);
+                        
+                        log.debug("Full statistics API response: " + body);
+                        
+                        // The API response structure is: { "results": { "buckets": { "running": { "buckets": { "2020-06-14": {...}, ... } }, "cycling": { "buckets": { "2022-08-04": {...}, ... } } } } }
+                        // Note: The inner "buckets" is an object with date keys, not an array
+                        JsonNode results = response.has("results") ? response.get("results") : response;
+                        JsonNode buckets = results.has("buckets") ? results.get("buckets") : null;
+                        
+                        if (buckets == null || !buckets.isObject()) {
+                            throw new RuntimeException("Unexpected statistics response format. Expected 'results.buckets' object.");
+                        }
+                        
+                        // Process each workout type that we're interested in
+                        for (String workoutType : selectedTypes) {
+                            String typeLower = workoutType.toLowerCase();
+                            
+                            // Check if this workout type exists in the buckets
+                            if (!buckets.has(typeLower)) {
+                                log.warn("No statistics found for workout type: " + workoutType);
+                                continue;
+                            }
+                            
+                            JsonNode typeBucket = buckets.get(typeLower);
+                            JsonNode typeBuckets = typeBucket.has("buckets") ? typeBucket.get("buckets") : null;
+                            
+                            if (typeBuckets == null || !typeBuckets.isObject()) {
+                                log.warn("No monthly buckets found for workout type: " + workoutType);
+                                continue;
+                            }
+                            
+                            // Aggregate: sum distance and workouts across all months
+                            // The buckets object has date keys (e.g., "2022-08-04", "2022-09-13")
+                            double totalDistance = 0.0;
+                            int totalWorkouts = 0;
+                            
+                            // Iterate over the object fields (date keys)
+                            java.util.Iterator<String> dateKeys = typeBuckets.fieldNames();
+                            while (dateKeys.hasNext()) {
+                                String dateKey = dateKeys.next();
+                                JsonNode monthBucket = typeBuckets.get(dateKey);
+                                
+                                if (monthBucket.has("distance")) {
+                                    totalDistance += monthBucket.get("distance").asDouble(0.0);
+                                }
+                                
+                                if (monthBucket.has("workouts")) {
+                                    totalWorkouts += monthBucket.get("workouts").asInt(0);
+                                }
+                            }
+                            
+                            // Create aggregated JSON object
+                            ObjectNode aggregatedStats = mapper.createObjectNode();
+                            aggregatedStats.put("workoutType", workoutType);
+                            aggregatedStats.put("totalDistance", totalDistance);
+                            aggregatedStats.put("totalWorkouts", totalWorkouts);
+                            
+                            String aggregatedJson = mapper.writeValueAsString(aggregatedStats);
+                            
+                            // Send to MQTT with type-specific topic
+                            String typeTopic = mqttStatisticsTopic + "/" + typeLower;
+                            publishToMqttWithRetry(typeTopic, aggregatedJson, workoutType + " statistics", 30000, 1000);
+                            
+                            log.info("Published statistics for " + workoutType + ": " + totalWorkouts + " workouts, " + 
+                                String.format("%.2f", totalDistance / 1000) + " km total distance");
+                        }
+                    })
+                .otherwise()
+                    .log("Failed to fetch statistics. Status: ${header.CamelHttpResponseCode}, Body: ${body}")
             .endChoice();
     }
 }
