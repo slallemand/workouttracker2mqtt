@@ -17,8 +17,11 @@ if [ -n "$MQTT_PASSWORD" ]; then
     export MQTT_BROKER_PASSWORD="$MQTT_PASSWORD"
 fi
 
-# Optional MQTT topic configuration (has default value, always export)
-export MQTT_BROKER_TOPIC_WORKOUTS=$(bashio::config 'mqtt_broker_topic_workouts')
+# Optional MQTT topic configuration
+# Only export if user explicitly set a value (allows Java default to work if not set)
+if bashio::config.has_value 'mqtt_broker_topic_workouts'; then
+    export MQTT_BROKER_TOPIC_WORKOUTS=$(bashio::config 'mqtt_broker_topic_workouts')
+fi
 
 # Optional MQTT client instance ID (for multi-instance support)
 # Only export if a non-empty value is provided (default is empty string)
@@ -27,18 +30,32 @@ if [ -n "$INSTANCE_ID" ]; then
     export MQTT_BROKER_CLIENT_INSTANCE_ID="$INSTANCE_ID"
 fi
 
-# Optional workout types (has default value, always export)
-export WORKOUT_TYPES=$(bashio::config 'workout_types')
+# Optional workout types
+# Only export if user explicitly set a value (allows Java default to work if not set)
+if bashio::config.has_value 'workout_types'; then
+    export WORKOUT_TYPES=$(bashio::config 'workout_types')
+fi
 
-# Optional Home Assistant discovery configuration (has default values, always export)
-export HOMEASSISTANT_DISCOVERY_ENABLED=$(bashio::config 'homeassistant_discovery_enabled')
-export HOMEASSISTANT_DISCOVERY_PREFIX=$(bashio::config 'homeassistant_discovery_prefix')
-export HOMEASSISTANT_DISCOVERY_NODE_ID=$(bashio::config 'homeassistant_discovery_node_id')
+# Optional Home Assistant discovery configuration
+# Only export if user explicitly set values (allows Java defaults to work if not set)
+if bashio::config.has_value 'homeassistant_discovery_enabled'; then
+    export HOMEASSISTANT_DISCOVERY_ENABLED=$(bashio::config 'homeassistant_discovery_enabled')
+fi
 
-# Optional timer configuration (has default value, always export)
-export CAMEL_ROUTE_TIMER_PERIOD=$(bashio::config 'camel_route_timer_period')
+if bashio::config.has_value 'homeassistant_discovery_prefix'; then
+    export HOMEASSISTANT_DISCOVERY_PREFIX=$(bashio::config 'homeassistant_discovery_prefix')
+fi
+
+if bashio::config.has_value 'homeassistant_discovery_node_id'; then
+    export HOMEASSISTANT_DISCOVERY_NODE_ID=$(bashio::config 'homeassistant_discovery_node_id')
+fi
+
+# Optional timer configuration
+# Only export if user explicitly set a value (allows Java default to work if not set)
+if bashio::config.has_value 'camel_route_timer_period'; then
+    export CAMEL_ROUTE_TIMER_PERIOD=$(bashio::config 'camel_route_timer_period')
+fi
 
 # Start the application
 cd /app
 exec java -jar quarkus-run.jar
-

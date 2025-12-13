@@ -1,6 +1,6 @@
 name: Workout Tracker
 description: Bridge between workout-tracker and MQTT for Home Assistant integration
-version: "1.4.3"
+version: "1.4.4"
 slug: workouttracker2mqtt
 init: false
 arch:
