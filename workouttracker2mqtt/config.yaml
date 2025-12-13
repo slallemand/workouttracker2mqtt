@@ -16,7 +16,7 @@ ports:
   8080/tcp: null
 ports_description:
   8080/tcp: Application port (not used, but required by Quarkus)
-image: slallemand/workouttracker-addon
+image: ghcr.io/slallemand/workouttracker-addon
 
 options:
   workouttracker_api_server_url: "http://workout-tracker:8080"
