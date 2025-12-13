@@ -11,7 +11,7 @@ FROM ${BUILD_FROM}
 # Install Java runtime and CA certificates (Home Assistant base is Alpine-based)
 # Install java-cacerts separately without --no-scripts so its update script runs
 # This script imports system CA certificates into Java's truststore
-RUN apk add --no-cache openjdk21-jre-headless ca-certificates
+RUN apk add --no-cache openjdk21-jre-headless ca-certificates busybox
 # RUN apk add --no-cache --no-scripts openjdk21-jre-headless ca-certificates && \
     # apk add --no-cache java-cacerts && \
     # if [ -f /usr/lib/jvm/java-21-openjdk/bin/java ]; then \
