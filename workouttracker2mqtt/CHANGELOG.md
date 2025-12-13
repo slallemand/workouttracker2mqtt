@@ -7,6 +7,11 @@ All notable changes to this add-on will be documented in this file.
 ### Changed
 - Version bump to 1.4.2
 
+## [1.4.2] - 2025-12-13
+
+### Changed
+- Version bump to 1.4.2
+
 ## [1.2.0] - 2025-12-13
 
 ### Changed
