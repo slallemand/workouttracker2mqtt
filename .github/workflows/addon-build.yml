@@ -84,9 +84,9 @@ jobs:
           - arch: amd64
             platform: linux/amd64
             base_image: ghcr.io/home-assistant/amd64-base:latest
-          - arch: aarch64
-            platform: linux/aarch64
-            base_image: ghcr.io/home-assistant/aarch64-base:latest
+          # - arch: aarch64
+          #   platform: linux/aarch64
+          #   base_image: ghcr.io/home-assistant/aarch64-base:latest
 
     steps:
       - name: Checkout repository
@@ -155,5 +155,5 @@ jobs:
           docker buildx imagetools create \
             -t ${{ env.REGISTRY }}/${{ env.ADDON_IMAGE_NAME }}:${{ steps.addon_version.outputs.version }} \
             -t ${{ env.REGISTRY }}/${{ env.ADDON_IMAGE_NAME }}:latest \
-            ${{ env.REGISTRY }}/${{ env.ADDON_IMAGE_NAME }}:${{ steps.addon_version.outputs.version }}-amd64 \
-            ${{ env.REGISTRY }}/${{ env.ADDON_IMAGE_NAME }}:${{ steps.addon_version.outputs.version }}-aarch64
+            ${{ env.REGISTRY }}/${{ env.ADDON_IMAGE_NAME }}:${{ steps.addon_version.outputs.version }}-amd64 #\
+            # ${{ env.REGISTRY }}/${{ env.ADDON_IMAGE_NAME }}:${{ steps.addon_version.outputs.version }}-aarch64

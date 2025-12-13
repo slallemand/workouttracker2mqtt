@@ -4,7 +4,7 @@ version: "1.6.0"
 slug: workouttracker2mqtt
 init: false
 arch:
-  - aarch64
+  # - aarch64
   - amd64
 homepage: https://github.com/slallemand/workouttracker2mqtt
 repository: https://github.com/slallemand/workouttracker2mqtt
