@@ -5,6 +5,17 @@ export WORKOUTTRACKER_API_SERVER_URL=$(bashio::config 'workouttracker_api_server
 export WORKOUTTRACKER_API_KEY=$(bashio::config 'workouttracker_api_key')
 export MQTT_BROKER_URL=$(bashio::config 'mqtt_broker_url')
 
+
+options=$(bashio::addon.options)
+old_keys='mqtt_broker_topic_workouts mqtt_broker_client_instance_id'
+
+for old_key in $old_keys; do
+    if bashio::jq.exists "${options}" ".${old_key}"; then
+        bashio::log.info "Removing ${old_key}"
+        bashio::addon.option "${old_key}"
+    fi
+done
+
 # Optional MQTT broker credentials
 # Only export if non-empty values are provided (defaults are empty strings)
 MQTT_USERNAME=$(bashio::config 'mqtt_broker_username' '')
