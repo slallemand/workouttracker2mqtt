@@ -13,7 +13,7 @@ homepage: https://github.com/slallemand/workouttracker2mqtt
 repository: https://github.com/slallemand/workouttracker2mqtt
 ingress: false
 panel_icon: mdi:run-fast
-panel_title: Workout Tracker 2 MQTT
+panel_title: Workout Tracker
 panel_admin: false
 ports:
   8080/tcp: null
@@ -21,66 +21,21 @@ ports_description:
   8080/tcp: Application port (not used, but required by Quarkus)
 options:
   workout-tracker:
-    workouttracker_api_server_url:
-      type: string
-      required: true
-      example: "http://workout-tracker:8080"
-      description: "Base URL of your workout-tracker instance"
-    workouttracker_api_key:
-      type: string
-      required: true
-      example: "Bearer your-api-key-here"
-      description: "API key for authenticating with workout-tracker (include 'Bearer ' prefix)"
-    workout_types:
-      type: string
-      required: false
-      default: "running,cycling"
-      description: "Comma-separated list of workout types to monitor"
+    workouttracker_api_server_url: "http://workout-tracker:8080"
+    workouttracker_api_key: "Bearer your-api-key-here"
+    workout_types: "running,cycling"
   mqtt-broker:
-    mqtt_broker_url:
-      type: string
-      required: true
-      example: "tcp://core-mosquitto:1883"
-      description: "MQTT broker connection URL (use 'core-mosquitto' for Home Assistant's built-in MQTT broker)"
-    mqtt_broker_username:
-      type: string
-      required: true
-      example: "mqtt_user"
-      description: "MQTT broker username (optional, leave empty for Home Assistant's built-in broker)"
-    mqtt_broker_password:
-      type: string
-      required: true
-      example: "mqtt_password"
-      description: "MQTT broker password (optional, leave empty for Home Assistant's built-in broker)"
-    mqtt_broker_topic_workouts:
-      type: string
-      required: false
-      default: "workouttracker/workouts"
-      description: "MQTT topic for workouts"
-    # mqtt_broker_client_instance_id:
+    mqtt_broker_url: "tcp://core-mosquitto:1883"
+    mqtt_broker_username: null
+    mqtt_broker_password: null
+    mqtt_broker_topic_workouts: "workouttracker/workouts"
+    mqtt_broker_client_instance_id: null
     #   type: string
     #   required: false
-
-  homeassistant_discovery_enabled:
-    type: boolean
-    required: false
-    default: true
-    description: "Enable Home Assistant MQTT autodiscovery"
-  homeassistant_discovery_prefix:
-    type: string
-    required: false
-    default: "homeassistant"
-    description: "Home Assistant discovery topic prefix"
-  homeassistant_discovery_node_id:
-    type: string
-    required: false
-    default: "workouttracker"
-    description: "Node ID for Home Assistant discovery"
-  camel_route_timer_period:
-    type: int
-    required: false
-    default: 60000
-    description: "Polling interval in milliseconds"
+  homeassistant_discovery_enabled: true
+  homeassistant_discovery_prefix: "homeassistant"
+  homeassistant_discovery_node_id: "workouttracker"
+  camel_route_timer_period: 60000
 schema:
   workouttracker_api_server_url: url
   workouttracker_api_key: password
@@ -88,10 +43,9 @@ schema:
   mqtt_broker_username: str?
   mqtt_broker_password: password?
   mqtt_broker_topic_workouts: str?
-  # mqtt_broker_client_instance_id: str?
+  mqtt_broker_client_instance_id: str?
   workout_types: str?
   homeassistant_discovery_enabled: bool?
   homeassistant_discovery_prefix: str?
   homeassistant_discovery_node_id: str?
   camel_route_timer_period: int?
-
