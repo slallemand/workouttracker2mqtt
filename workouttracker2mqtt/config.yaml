@@ -1,14 +1,11 @@
 name: Workout Tracker
 description: Bridge between workout-tracker and MQTT for Home Assistant integration
-version: "1.5.3"
+version: "1.5.3a"
 slug: workouttracker2mqtt
 init: false
 arch:
   - aarch64
   - amd64
-  - armhf
-  - armv7
-  - i386
 homepage: https://github.com/slallemand/workouttracker2mqtt
 repository: https://github.com/slallemand/workouttracker2mqtt
 ingress: false
@@ -19,6 +16,7 @@ ports:
   8080/tcp: null
 ports_description:
   8080/tcp: Application port (not used, but required by Quarkus)
+
 options:
   workout-tracker:
     workouttracker_api_server_url: "http://workout-tracker:8080"
@@ -30,8 +28,6 @@ options:
     mqtt_broker_password: null
     mqtt_broker_topic_workouts: "workouttracker/workouts"
     mqtt_broker_client_instance_id: null
-    #   type: string
-    #   required: false
   homeassistant_discovery_enabled: true
   homeassistant_discovery_prefix: "homeassistant"
   homeassistant_discovery_node_id: "workouttracker"
