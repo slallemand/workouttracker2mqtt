@@ -20,44 +20,47 @@ ports:
 ports_description:
   8080/tcp: Application port (not used, but required by Quarkus)
 options:
-  workouttracker_api_server_url:
-    type: string
-    required: true
-    example: "http://workout-tracker:8080"
-    description: "Base URL of your workout-tracker instance"
-  workouttracker_api_key:
-    type: string
-    required: true
-    example: "Bearer your-api-key-here"
-    description: "API key for authenticating with workout-tracker (include 'Bearer ' prefix)"
-  mqtt_broker_url:
-    type: string
-    required: true
-    example: "tcp://core-mosquitto:1883"
-    description: "MQTT broker connection URL (use 'core-mosquitto' for Home Assistant's built-in MQTT broker)"
-  mqtt_broker_username:
-    type: string
-    required: true
-    example: "mqtt_user"
-    description: "MQTT broker username (optional, leave empty for Home Assistant's built-in broker)"
-  mqtt_broker_password:
-    type: string
-    required: true
-    example: "mqtt_password"
-    description: "MQTT broker password (optional, leave empty for Home Assistant's built-in broker)"
-  mqtt_broker_topic_workouts:
-    type: string
-    required: false
-    default: "workouttracker/workouts"
-    description: "MQTT topic for workouts"
-  # mqtt_broker_client_instance_id:
-  #   type: string
-  #   required: false
-  workout_types:
-    type: string
-    required: false
-    default: "running,cycling"
-    description: "Comma-separated list of workout types to monitor"
+  workout-tracker:
+    workouttracker_api_server_url:
+      type: string
+      required: true
+      example: "http://workout-tracker:8080"
+      description: "Base URL of your workout-tracker instance"
+    workouttracker_api_key:
+      type: string
+      required: true
+      example: "Bearer your-api-key-here"
+      description: "API key for authenticating with workout-tracker (include 'Bearer ' prefix)"
+    workout_types:
+      type: string
+      required: false
+      default: "running,cycling"
+      description: "Comma-separated list of workout types to monitor"
+  mqtt-broker:
+    mqtt_broker_url:
+      type: string
+      required: true
+      example: "tcp://core-mosquitto:1883"
+      description: "MQTT broker connection URL (use 'core-mosquitto' for Home Assistant's built-in MQTT broker)"
+    mqtt_broker_username:
+      type: string
+      required: true
+      example: "mqtt_user"
+      description: "MQTT broker username (optional, leave empty for Home Assistant's built-in broker)"
+    mqtt_broker_password:
+      type: string
+      required: true
+      example: "mqtt_password"
+      description: "MQTT broker password (optional, leave empty for Home Assistant's built-in broker)"
+    mqtt_broker_topic_workouts:
+      type: string
+      required: false
+      default: "workouttracker/workouts"
+      description: "MQTT topic for workouts"
+    # mqtt_broker_client_instance_id:
+    #   type: string
+    #   required: false
+
   homeassistant_discovery_enabled:
     type: boolean
     required: false
@@ -79,11 +82,11 @@ options:
     default: 60000
     description: "Polling interval in milliseconds"
 schema:
-  workouttracker_api_server_url: str
-  workouttracker_api_key: str
-  mqtt_broker_url: str
+  workouttracker_api_server_url: url
+  workouttracker_api_key: password
+  mqtt_broker_url: url
   mqtt_broker_username: str?
-  mqtt_broker_password: str?
+  mqtt_broker_password: password?
   mqtt_broker_topic_workouts: str?
   # mqtt_broker_client_instance_id: str?
   workout_types: str?
