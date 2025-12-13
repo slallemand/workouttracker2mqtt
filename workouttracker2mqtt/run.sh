@@ -23,12 +23,12 @@ if bashio::config.has_value 'mqtt_broker_topic_workouts'; then
     export MQTT_BROKER_TOPIC_WORKOUTS=$(bashio::config 'mqtt_broker_topic_workouts')
 fi
 
-# Optional MQTT client instance ID (for multi-instance support)
-# Only export if a non-empty value is provided (default is empty string)
-INSTANCE_ID=$(bashio::config 'mqtt_broker_client_instance_id' '')
-if [ -n "$INSTANCE_ID" ]; then
-    export MQTT_BROKER_CLIENT_INSTANCE_ID="$INSTANCE_ID"
-fi
+# # Optional MQTT client instance ID (for multi-instance support)
+# # Only export if a non-empty value is provided (default is empty string)
+# INSTANCE_ID=$(bashio::config 'mqtt_broker_client_instance_id' '')
+# if [ -n "$INSTANCE_ID" ]; then
+#     export MQTT_BROKER_CLIENT_INSTANCE_ID="$INSTANCE_ID"
+# fi
 
 # Optional workout types
 # Only export if user explicitly set a value (allows Java default to work if not set)

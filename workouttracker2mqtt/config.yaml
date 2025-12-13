@@ -50,9 +50,9 @@ options:
     required: false
     default: "workouttracker/workouts"
     description: "MQTT topic for workouts"
-  mqtt_broker_client_instance_id:
-    type: string
-    required: false
+  # mqtt_broker_client_instance_id:
+  #   type: string
+  #   required: false
   workout_types:
     type: string
     required: false
@@ -85,7 +85,7 @@ schema:
   mqtt_broker_username: str?
   mqtt_broker_password: str?
   mqtt_broker_topic_workouts: str?
-  mqtt_broker_client_instance_id: str?
+  # mqtt_broker_client_instance_id: str?
   workout_types: str?
   homeassistant_discovery_enabled: bool?
   homeassistant_discovery_prefix: str?
