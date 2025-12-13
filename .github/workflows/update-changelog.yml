@@ -1,0 +1,173 @@
+name: Update Changelog
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'New version number (e.g., 1.2.0)'
+        required: true
+        type: string
+      changelog_entry:
+        description: 'Changelog entry (markdown format, will be added under "Added", "Changed", "Fixed", or "Removed")'
+        required: false
+        type: string
+      change_type:
+        description: 'Type of change'
+        required: false
+        type: choice
+        options:
+          - Added
+          - Changed
+          - Fixed
+          - Removed
+        default: Changed
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'workouttracker2mqtt/config.yaml'
+
+jobs:
+  update-changelog:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Get version from config.yaml
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=$(grep '^version:' workouttracker2mqtt/config.yaml | sed 's/version: *"\(.*\)"/\1/')
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected version: $VERSION"
+      
+      - name: Get previous version
+        id: get_previous_version
+        run: |
+          PREV_VERSION=$(git log --all --oneline --grep="chore.*version" -1 | grep -oP 'v?\d+\.\d+\.\d+' | head -1 || echo "")
+          if [ -z "$PREV_VERSION" ]; then
+            PREV_VERSION=$(grep -E '^## \[' workouttracker2mqtt/CHANGELOG.md | head -1 | sed 's/## \[\(.*\)\].*/\1/' || echo "")
+          fi
+          echo "previous_version=$PREV_VERSION" >> $GITHUB_OUTPUT
+          echo "Previous version: $PREV_VERSION"
+      
+      - name: Generate changelog entry from git commits
+        id: generate_changelog
+        if: github.event_name == 'push' && github.event.inputs.changelog_entry == ''
+        run: |
+          PREV_VERSION="${{ steps.get_previous_version.outputs.previous_version }}"
+          CURRENT_VERSION="${{ steps.get_version.outputs.version }}"
+          
+          if [ -n "$PREV_VERSION" ]; then
+            # Get commits since last version tag or since last changelog entry
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD 2>/dev/null || git log --pretty=format:"- %s (%h)" --no-merges -20)
+          else
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges -20)
+          fi
+          
+          # Format as changelog
+          CHANGELOG_ENTRY=$(echo "$COMMITS" | head -20)
+          echo "changelog_entry<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG_ENTRY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Use manual changelog entry
+        id: manual_changelog
+        if: github.event.inputs.changelog_entry != ''
+        run: |
+          CHANGE_TYPE="${{ github.event.inputs.change_type }}"
+          ENTRY="${{ github.event.inputs.changelog_entry }}"
+          echo "changelog_entry<<EOF" >> $GITHUB_OUTPUT
+          echo "### $CHANGE_TYPE" >> $GITHUB_OUTPUT
+          echo "$ENTRY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Update CHANGELOG.md
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          DATE=$(date +%Y-%m-%d)
+          
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.changelog_entry }}" ]; then
+            CHANGELOG_CONTENT="${{ steps.manual_changelog.outputs.changelog_entry }}"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            CHANGELOG_CONTENT="${{ steps.generate_changelog.outputs.changelog_entry }}"
+            if [ -n "$CHANGELOG_CONTENT" ]; then
+              CHANGELOG_CONTENT="### Changed
+$CHANGELOG_CONTENT"
+            else
+              CHANGELOG_CONTENT="### Changed
+- Version bump to $VERSION"
+            fi
+          else
+            CHANGELOG_CONTENT="### Changed
+- Version bump to $VERSION"
+          fi
+          
+          # Create new changelog entry
+          NEW_ENTRY="## [$VERSION] - $DATE
+
+$CHANGELOG_CONTENT
+
+"
+          
+          # Insert at the top of CHANGELOG.md (after the header)
+          if [ -f workouttracker2mqtt/CHANGELOG.md ]; then
+            # Read the header (first 3 lines)
+            HEADER=$(head -3 workouttracker2mqtt/CHANGELOG.md)
+            # Read the rest
+            REST=$(tail -n +4 workouttracker2mqtt/CHANGELOG.md)
+            # Combine
+            echo "$HEADER" > workouttracker2mqtt/CHANGELOG.md
+            echo "" >> workouttracker2mqtt/CHANGELOG.md
+            echo "$NEW_ENTRY" >> workouttracker2mqtt/CHANGELOG.md
+            echo "$REST" >> workouttracker2mqtt/CHANGELOG.md
+          else
+            echo "# Changelog" > workouttracker2mqtt/CHANGELOG.md
+            echo "" >> workouttracker2mqtt/CHANGELOG.md
+            echo "$NEW_ENTRY" >> workouttracker2mqtt/CHANGELOG.md
+          fi
+          
+          echo "Updated CHANGELOG.md with version $VERSION"
+          cat workouttracker2mqtt/CHANGELOG.md
+      
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add workouttracker2mqtt/CHANGELOG.md
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            VERSION="${{ steps.get_version.outputs.version }}"
+            git commit -m "chore: update changelog for version $VERSION"
+            git push
+          fi
+      
+      - name: Create GitHub Release (optional)
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: "v${{ steps.get_version.outputs.version }}"
+          name: "Release v${{ steps.get_version.outputs.version }}"
+          body: |
+            ## Changes in v${{ steps.get_version.outputs.version }}
+            
+            ${{ github.event.inputs.changelog_entry || 'See CHANGELOG.md for details' }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

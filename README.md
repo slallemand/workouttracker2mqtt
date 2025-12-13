@@ -147,3 +147,74 @@ Or, if you don't have GraalVM installed, you can run the native executable build
 You can then execute your native executable with: `./target/workout2mqtt-1.0.0-SNAPSHOT-runner`
 
 If you want to learn more about building native executables, please consult <https://quarkus.io/guides/maven-tooling>.
+
+## Home Assistant Add-on Changelog Management
+
+The Home Assistant add-on includes automated changelog management to ensure users see what's changed in each version.
+
+### Automatic Changelog Updates
+
+When you update the version in `workouttracker2mqtt/config.yaml`, you can automatically update the `CHANGELOG.md` file using one of these methods:
+
+#### Method 1: Using the Script (Recommended)
+
+Run the update script locally:
+
+```bash
+./scripts/update-changelog.sh [version] [changelog_entry]
+```
+
+Examples:
+```bash
+# Auto-detect version from config.yaml and generate from git commits
+./scripts/update-changelog.sh
+
+# Specify version and auto-generate from git commits
+./scripts/update-changelog.sh 1.2.0
+
+# Specify version and custom changelog entry
+./scripts/update-changelog.sh 1.2.0 "- Added support for new workout types
+- Fixed MQTT connection retry logic"
+```
+
+#### Method 2: Using GitHub Actions Workflow
+
+1. Go to **Actions** → **Update Changelog** in your GitHub repository
+2. Click **Run workflow**
+3. Fill in:
+   - **Version**: The new version number (e.g., `1.2.0`)
+   - **Changelog entry** (optional): Custom changelog text
+   - **Change type**: Added, Changed, Fixed, or Removed
+4. Click **Run workflow**
+
+The workflow will:
+- Update `CHANGELOG.md` with the new version
+- Optionally create a GitHub release
+- Commit the changes automatically
+
+#### Method 3: Automatic on Version Change
+
+The GitHub Actions workflow also runs automatically when you push changes to `workouttracker2mqtt/config.yaml` that modify the version. It will:
+- Extract the new version from `config.yaml`
+- Generate changelog entries from recent git commits
+- Update `CHANGELOG.md` automatically
+- Commit the changes
+
+### Changelog Format
+
+The changelog follows the [Keep a Changelog](https://keepachangelog.com/) format:
+
+```markdown
+## [1.2.0] - 2024-01-15
+
+### Added
+- New feature description
+
+### Changed
+- Improvement description
+
+### Fixed
+- Bug fix description
+```
+
+Home Assistant Supervisor automatically reads `CHANGELOG.md` and displays it to users when they update the add-on.

@@ -121,14 +121,14 @@ public class WorkoutRoute extends RouteBuilder {
             try {
                 getContext().createProducerTemplate().sendBody(mqttEndpoint, message);
                 if (attemptCount > 1) {
-                    log.info("Successfully published " + description + " to MQTT after " + attemptCount + " attempts");
+                    log.info("MQTT broker is now available. Successfully published " + description + " to MQTT after " + attemptCount + " attempts");
                 } else {
                     log.debug("Published " + description + " to MQTT topic: " + topic);
                 }
                 success = true;
             } catch (Exception e) {
                 log.warn("MQTT broker unavailable for " + description + " (attempt " + attemptCount + "): " + e.getMessage() + 
-                    ". Retrying in " + retryDelay + "ms...");
+                    ". Waiting for broker to become available, retrying in " + retryDelay + "ms...");
                 
                 // Wait before retrying
                 try {
@@ -328,7 +328,7 @@ public class WorkoutRoute extends RouteBuilder {
                         "",
                         "{{ value_json.results.workouts | default(0) }}",
                         mqttTotalsTopic,
-                        null
+                        "measurement"
                     );
                     
                     publishHomeAssistantDiscovery(
@@ -373,7 +373,7 @@ public class WorkoutRoute extends RouteBuilder {
                             "",
                             "{{ value_json.totalWorkouts | default(0) }}",
                             statisticsTopic,
-                            null
+                            "measurement"
                         );
                     }
                     
