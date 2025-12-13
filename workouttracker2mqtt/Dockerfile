@@ -1,9 +1,11 @@
+# BUILD_FROM is passed from the workflow and contains the correct base image for each architecture
+# ARG must be defined before any FROM statement that uses it
+ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest
+
 # Stage 1: Get the application from the workouttracker2mqtt image
 FROM ghcr.io/slallemand/workouttracker2mqtt:latest AS app
 
 # Stage 2: Build the addon with Home Assistant base image
-# BUILD_FROM is passed from the workflow and contains the correct base image for each architecture
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest
 FROM ${BUILD_FROM}
 
 # Install Java runtime (Home Assistant base is Alpine-based)
