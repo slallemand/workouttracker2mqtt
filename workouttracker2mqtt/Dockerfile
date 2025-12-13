@@ -9,7 +9,9 @@ FROM ghcr.io/slallemand/workouttracker2mqtt:latest AS app
 FROM ${BUILD_FROM}
 
 # Install Java runtime (Home Assistant base is Alpine-based)
-RUN apk add --no-cache openjdk21-jre-headless
+# Use --no-scripts to avoid trigger issues when cross-compiling for ARM64 with QEMU
+# The triggers may fail under emulation, but packages are still installed correctly
+RUN apk add --no-cache --no-scripts openjdk21-jre-headless
 
 # Copy application files from the app image
 COPY --from=app /deployments /app
