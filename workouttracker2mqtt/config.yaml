@@ -53,9 +53,6 @@ options:
   mqtt_broker_client_instance_id:
     type: string
     required: false
-    default: null
-    example: "instance1"
-    description: "Instance ID to append to MQTT client ID (for multi-instance support). If not set, generates a random UUID"
   workout_types:
     type: string
     required: false
