@@ -1,6 +1,6 @@
 name: Workout Tracker
 description: Bridge between workout-tracker and MQTT for Home Assistant integration
-version: "1.4.0"
+version: "1.4.1"
 slug: workouttracker2mqtt
 init: false
 arch:
@@ -50,6 +50,11 @@ options:
     required: false
     default: "workouttracker/workouts"
     description: "MQTT topic for workouts"
+  mqtt_broker_client_instance_id:
+    type: string
+    required: false
+    example: "instance1"
+    description: "Instance ID to append to MQTT client ID (for multi-instance support). If not set, generates a random UUID"
   workout_types:
     type: string
     required: false
@@ -82,6 +87,7 @@ schema:
   mqtt_broker_username: str?
   mqtt_broker_password: str?
   mqtt_broker_topic_workouts: str?
+  mqtt_broker_client_instance_id: str?
   workout_types: str?
   homeassistant_discovery_enabled: bool?
   homeassistant_discovery_prefix: str?

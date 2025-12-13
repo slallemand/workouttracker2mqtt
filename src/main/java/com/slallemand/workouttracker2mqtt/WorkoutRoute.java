@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -42,6 +43,9 @@ public class WorkoutRoute extends RouteBuilder {
 
     @ConfigProperty(name = "mqtt.broker.client.id")
     String mqttClientId;
+
+    @ConfigProperty(name = "mqtt.broker.client.instance.id")
+    Optional<String> mqttClientInstanceId;
 
     @ConfigProperty(name = "mqtt.broker.topic.workouts")
     String mqttTopic;
@@ -79,18 +83,18 @@ public class WorkoutRoute extends RouteBuilder {
     @ConfigProperty(name = "workout.types", defaultValue = "running,cycling")
     String workoutTypes;
 
-    // Shared MQTT endpoint URI for connection reuse (topic is set via header)
+    // Shared MQTT endpoint URI for connection reuse (topic, QoS, and retained are set via headers)
     private String baseMqttEndpoint;
-    private String discoveryMqttEndpoint;
     
-    // Cached Producer instances to ensure single connection per endpoint
+    // Unique client ID for this instance (generated from base client ID + instance identifier)
+    private String uniqueClientId;
+    
+    // Cached Producer instance to ensure single connection
     // Using volatile for thread-safe access
     private volatile Producer baseMqttProducer;
-    private volatile Producer discoveryMqttProducer;
     
-    // Track if we've logged connection status for each endpoint
+    // Track if we've logged connection status
     private volatile boolean baseMqttConnectedLogged = false;
-    private volatile boolean discoveryMqttConnectedLogged = false;
 
     /**
      * Capitalizes the first letter of a string
@@ -103,6 +107,34 @@ public class WorkoutRoute extends RouteBuilder {
     }
 
     /**
+     * Generates a unique client ID for MQTT connections.
+     * If instance ID is configured, uses it. Otherwise, generates a random UUID suffix.
+     * This ensures multiple instances can run simultaneously without client ID conflicts.
+     * 
+     * @param baseClientId The base client ID from configuration
+     * @return A unique client ID for this instance
+     */
+    private String generateUniqueClientId(String baseClientId) {
+        // Use default base if not configured
+        if (baseClientId == null || baseClientId.isEmpty()) {
+            baseClientId = "workouttracker2mqtt-client";
+        }
+        
+        String instanceId;
+        
+        // If instance ID is not configured, generate a random UUID
+        if (mqttClientInstanceId == null || !mqttClientInstanceId.isPresent() || mqttClientInstanceId.get().isEmpty()) {
+            // Generate a short UUID (8 characters) for readability
+            instanceId = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        } else {
+            // Sanitize manually configured instance ID (MQTT client IDs should be alphanumeric, hyphens, underscores)
+            instanceId = mqttClientInstanceId.get().replaceAll("[^a-zA-Z0-9_-]", "-");
+        }
+        
+        return baseClientId + "-" + instanceId;
+    }
+
+    /**
      * Initializes shared MQTT endpoints and ProducerTemplate for connection reuse
      * Ensures endpoints are started to establish MQTT connections
      */
@@ -111,51 +143,38 @@ public class WorkoutRoute extends RouteBuilder {
             return; // Already initialized
         }
         
-        // Base endpoint for regular messages - topic is set dynamically via header
+        // Generate unique client ID to support multiple instances
+        this.uniqueClientId = generateUniqueClientId(mqttClientId);
+        log.info("Using MQTT client ID: " + uniqueClientId + " (base: " + mqttClientId + ")");
+        
+        // Single endpoint for all messages - topic, QoS, and retained are set dynamically via headers
         // Using a placeholder topic in URI, actual topic will be set via CamelPahoMQTTTopic header
+        // QoS and retained can be overridden per message via CamelPahoMQTTQoS and CamelPahoMQTTRetained headers
         baseMqttEndpoint = "paho:workouttracker" + 
             "?brokerUrl=" + mqttBrokerUrl + 
-            "&clientId=" + mqttClientId + 
+            "&clientId=" + uniqueClientId + 
             "&qos=" + mqttQos + 
             "&retained=" + mqttRetained + 
             "&userName=" + (mqttBrokerUsername != null ? mqttBrokerUsername : "") + 
             "&password=" + (mqttBrokerPassword != null ? mqttBrokerPassword : "");
         
-        // Separate endpoint for discovery messages (different clientId and qos)
-        discoveryMqttEndpoint = "paho:homeassistant-discovery" + 
-            "?brokerUrl=" + mqttBrokerUrl + 
-            "&clientId=" + mqttClientId + "-discovery" + 
-            "&qos=0" + 
-            "&retained=true" + 
-            "&userName=" + (mqttBrokerUsername != null ? mqttBrokerUsername : "") + 
-            "&password=" + (mqttBrokerPassword != null ? mqttBrokerPassword : "");
-        
         try {
-            // Get endpoints to register them with the context
+            // Get endpoint to register it with the context
             Endpoint baseEndpoint = getContext().getEndpoint(baseMqttEndpoint);
-            Endpoint discoveryEndpoint = getContext().getEndpoint(discoveryMqttEndpoint);
             
-            // Create and cache producer instances to ensure single connection per endpoint
+            // Create and cache producer instance to ensure single connection
             // This prevents connection churn from creating multiple producers
             try {
                 baseMqttProducer = baseEndpoint.createProducer();
                 baseMqttProducer.start();
-                log.debug("Base MQTT endpoint producer created and started");
+                log.debug("MQTT endpoint producer created and started");
             } catch (Exception e) {
-                log.warn("Could not create base MQTT producer: " + e.getMessage() + ". Will retry on first publish.", e);
+                log.warn("Could not create MQTT producer: " + e.getMessage() + ". Will retry on first publish.", e);
             }
             
-            try {
-                discoveryMqttProducer = discoveryEndpoint.createProducer();
-                discoveryMqttProducer.start();
-                log.debug("Discovery MQTT endpoint producer created and started");
-            } catch (Exception e) {
-                log.warn("Could not create discovery MQTT producer: " + e.getMessage() + ". Will retry on first publish.", e);
-            }
-            
-            log.debug("MQTT endpoints initialized: base=" + baseEndpoint + ", discovery=" + discoveryEndpoint);
+            log.debug("MQTT endpoint initialized: " + baseEndpoint);
         } catch (Exception e) {
-            log.warn("Failed to initialize MQTT endpoints: " + e.getMessage() + ". Will retry on first publish.", e);
+            log.warn("Failed to initialize MQTT endpoint: " + e.getMessage() + ". Will retry on first publish.", e);
         }
     }
 
@@ -200,7 +219,7 @@ public class WorkoutRoute extends RouteBuilder {
                 // Log connection status on first successful publish
                 boolean wasPreviouslyConnected = baseMqttConnectedLogged;
                 if (!baseMqttConnectedLogged) {
-                    log.info("Connected to MQTT broker at " + mqttBrokerUrl + " (clientId: " + mqttClientId + ")");
+                    log.info("Connected to MQTT broker at " + mqttBrokerUrl + " (clientId: " + uniqueClientId + ")");
                     baseMqttConnectedLogged = true;
                 }
                 
@@ -304,33 +323,35 @@ public class WorkoutRoute extends RouteBuilder {
                 attemptCount++;
                 try {
                     // Ensure producer is available (create if needed, thread-safe)
-                    if (discoveryMqttProducer == null) {
+                    if (baseMqttProducer == null) {
                         synchronized (this) {
-                            if (discoveryMqttProducer == null) {
-                                Endpoint discoveryEndpoint = getContext().getEndpoint(discoveryMqttEndpoint);
-                                discoveryMqttProducer = discoveryEndpoint.createProducer();
-                                discoveryMqttProducer.start();
+                            if (baseMqttProducer == null) {
+                                Endpoint baseEndpoint = getContext().getEndpoint(baseMqttEndpoint);
+                                baseMqttProducer = baseEndpoint.createProducer();
+                                baseMqttProducer.start();
                             }
                         }
                     }
                     
-                    // Use cached Producer directly with header to set topic dynamically
+                    // Use cached Producer directly with headers to set topic, QoS, and retained dynamically
                     // This ensures we use the exact same producer/connection every time
-                    Exchange discoveryExchange = getContext().getEndpoint(discoveryMqttEndpoint).createExchange();
+                    Exchange discoveryExchange = getContext().getEndpoint(baseMqttEndpoint).createExchange();
                     discoveryExchange.getIn().setBody(configJson);
                     discoveryExchange.getIn().setHeader("CamelPahoMQTTTopic", discoveryTopic);
-                    discoveryMqttProducer.process(discoveryExchange);
+                    discoveryExchange.getIn().setHeader("CamelPahoMQTTQoS", 0); // Discovery messages use QoS 0
+                    discoveryExchange.getIn().setHeader("CamelPahoMQTTRetained", true); // Discovery messages are retained
+                    baseMqttProducer.process(discoveryExchange);
                     
-                    // Log connection status on first successful publish for discovery endpoint
-                    boolean wasPreviouslyConnected = discoveryMqttConnectedLogged;
-                    if (!discoveryMqttConnectedLogged) {
-                        log.info("Connected to MQTT broker for discovery messages at " + mqttBrokerUrl + " (clientId: " + mqttClientId + "-discovery)");
-                        discoveryMqttConnectedLogged = true;
+                    // Log connection status on first successful publish (if not already logged)
+                    boolean wasPreviouslyConnected = baseMqttConnectedLogged;
+                    if (!baseMqttConnectedLogged) {
+                        log.info("Connected to MQTT broker at " + mqttBrokerUrl + " (clientId: " + uniqueClientId + ")");
+                        baseMqttConnectedLogged = true;
                     }
                     
                     // Log reconnection if we had to retry after being previously connected
                     if (attemptCount > 1 && wasPreviouslyConnected) {
-                        log.info("MQTT discovery connection re-established. Successfully published Home Assistant discovery for " + sensorName + " after " + attemptCount + " attempts");
+                        log.info("MQTT connection re-established. Successfully published Home Assistant discovery for " + sensorName + " after " + attemptCount + " attempts");
                     } else if (attemptCount > 1) {
                         log.info("Successfully published Home Assistant discovery for " + sensorName + " after " + attemptCount + " attempts");
                     } else {
@@ -347,8 +368,8 @@ public class WorkoutRoute extends RouteBuilder {
                                                errorMessage.contains("not connected") ||
                                                errorMessage.contains("32104");
                     
-                    if (isConnectionError && discoveryMqttConnectedLogged && attemptCount == 1) {
-                        log.warn("MQTT discovery connection lost for " + sensorName + ". Attempting to reconnect...");
+                    if (isConnectionError && baseMqttConnectedLogged && attemptCount == 1) {
+                        log.warn("MQTT connection lost for " + sensorName + ". Attempting to reconnect...");
                     }
                     
                     if (attemptCount == 1) {

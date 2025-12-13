@@ -19,6 +19,11 @@ if bashio::config.has_value 'mqtt_broker_topic_workouts'; then
     export MQTT_BROKER_TOPIC_WORKOUTS=$(bashio::config 'mqtt_broker_topic_workouts')
 fi
 
+# Optional MQTT client instance ID (for multi-instance support)
+if bashio::config.has_value 'mqtt_broker_client_instance_id'; then
+    export MQTT_BROKER_CLIENT_INSTANCE_ID=$(bashio::config 'mqtt_broker_client_instance_id')
+fi
+
 # Optional workout types
 if bashio::config.has_value 'workout_types'; then
     export WORKOUT_TYPES=$(bashio::config 'workout_types')
