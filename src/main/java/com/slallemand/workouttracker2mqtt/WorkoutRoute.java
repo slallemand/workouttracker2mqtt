@@ -26,9 +26,6 @@ public class WorkoutRoute extends RouteBuilder {
     @ConfigProperty(name = "workouttracker.api.endpoint.workouts")
     String restApiEndpoint;
 
-    @ConfigProperty(name = "workouttracker.api.endpoint.totals")
-    String restApiTotalsEndpoint;
-
     @ConfigProperty(name = "workouttracker.api.endpoint.statistics")
     String restApiStatisticsEndpoint;
 
@@ -46,9 +43,6 @@ public class WorkoutRoute extends RouteBuilder {
 
     @ConfigProperty(name = "mqtt.broker.topic.workouts")
     String mqttTopic;
-
-    @ConfigProperty(name = "mqtt.broker.topic.totals")
-    String mqttTotalsTopic;
 
     @ConfigProperty(name = "mqtt.broker.topic.statistics")
     String mqttStatisticsTopic;
@@ -238,16 +232,6 @@ public class WorkoutRoute extends RouteBuilder {
         onException(Exception.class)
             .handled(true)
             .log("Error in route: ${exception.message}")
-            .process(exchange -> {
-                // If it's a totals route error, write to stdout
-                String routeId = exchange.getFromRouteId();
-                if (routeId != null && routeId.contains("totals")) {
-                    String body = exchange.getIn().getBody(String.class);
-                    if (body != null) {
-                        System.out.println("TOTALS (MQTT failed): " + body);
-                    }
-                }
-            })
             .end();
 
         // Build the workouts list API URL
@@ -319,37 +303,6 @@ public class WorkoutRoute extends RouteBuilder {
                             "speed"
                         );
                     }
-                    
-                    // Discovery for totals data
-                    publishHomeAssistantDiscovery(
-                        exchange,
-                        "total_workouts",
-                        "Total Workouts",
-                        "",
-                        "{{ value_json.results.workouts | default(0) }}",
-                        mqttTotalsTopic,
-                        "measurement"
-                    );
-                    
-                    publishHomeAssistantDiscovery(
-                        exchange,
-                        "total_distance",
-                        "Total Distance",
-                        "km",
-                        "{{ value_json.results.distance | default(0) / 1000 }}",
-                        mqttTotalsTopic,
-                        "distance"
-                    );
-                    
-                    publishHomeAssistantDiscovery(
-                        exchange,
-                        "total_duration",
-                        "Total Duration",
-                        "d",
-                        "{{ value_json.results.duration | default(0) / 1000000000 / 3600 / 24 }}",
-                        mqttTotalsTopic,
-                        "duration"
-                    );
                     
                     // Discovery for statistics data (total distance and workouts by type)
                     for (String workoutType : selectedTypes) {
@@ -509,34 +462,7 @@ public class WorkoutRoute extends RouteBuilder {
                     .log("Failed to fetch workouts list. Status: ${header.CamelHttpResponseCode}, Body: ${body}")
             .endChoice();
 
-        // Second route: Fetch totals from /api/v1/totals endpoint
-        String totalsUrl = restApiServerUrl + restApiTotalsEndpoint;
-        
-        fromF("timer:totals-timer?period=%d&delay=%d", timerPeriod, timerDelay + 5000)
-            .log("Fetching totals from REST API: " + totalsUrl)
-            // Set the API key header
-            .setHeader(apiKeyHeaderName, constant(restApiKey))
-            .setHeader(Exchange.HTTP_METHOD, constant("GET"))
-            // Fetch totals from API
-            .toF("%s?bridgeEndpoint=true&throwExceptionOnFailure=false", totalsUrl)
-            .log("Received totals response: ${body}")
-            // Check if API call was successful
-            .choice()
-                .when(exchange -> {
-                    Integer statusCode = exchange.getIn().getHeader(Exchange.HTTP_RESPONSE_CODE, Integer.class);
-                    return statusCode != null && statusCode < 300;
-                })
-                    .log("Totals retrieved successfully, sending to MQTT")
-                    // Send totals to MQTT (with retry logic)
-                    .process(exchange -> {
-                        String body = exchange.getIn().getBody(String.class);
-                        publishToMqttWithRetry(mqttTotalsTopic, body, "totals", 30000, 1000);
-                    })
-                .otherwise()
-                    .log("Failed to fetch totals. Status: ${header.CamelHttpResponseCode}, Body: ${body}")
-            .endChoice();
-
-        // Third route: Fetch statistics from /api/v1/statistics endpoint and aggregate by workout type
+        // Second route: Fetch statistics from /api/v1/statistics endpoint and aggregate by workout type
         String statisticsUrl = restApiServerUrl + restApiStatisticsEndpoint;
         
         fromF("timer:statistics-timer?period=%d&delay=%d", timerPeriod, timerDelay + 10000)

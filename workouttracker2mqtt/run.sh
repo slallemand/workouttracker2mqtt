@@ -19,10 +19,6 @@ if bashio::config.has_value 'mqtt_broker_topic_workouts'; then
     export MQTT_BROKER_TOPIC_WORKOUTS=$(bashio::config 'mqtt_broker_topic_workouts')
 fi
 
-if bashio::config.has_value 'mqtt_broker_topic_totals'; then
-    export MQTT_BROKER_TOPIC_TOTALS=$(bashio::config 'mqtt_broker_topic_totals')
-fi
-
 # Optional workout types
 if bashio::config.has_value 'workout_types'; then
     export WORKOUT_TYPES=$(bashio::config 'workout_types')

@@ -8,7 +8,7 @@ A Quarkus-based application that connects to [workout-tracker](https://github.co
 - **MQTT Publishing**: Sends workout data to an MQTT broker for real-time monitoring
 - **Home Assistant Integration**: Automatically creates Home Assistant MQTT autodiscovery topics for seamless integration
 - **Configurable Workout Types**: Filter and monitor specific workout types (e.g., running, cycling)
-- **Automatic Updates**: Periodically fetches the latest workouts and totals from workout-tracker
+- **Automatic Updates**: Periodically fetches the latest workouts and statistics from workout-tracker
 
 ## Disclaimer
 
@@ -30,7 +30,6 @@ The application can be run using a container image. You need to provide the foll
 - `MQTT_BROKER_USERNAME`: MQTT broker username (if authentication is required)
 - `MQTT_BROKER_PASSWORD`: MQTT broker password (if authentication is required)
 - `MQTT_BROKER_TOPIC_WORKOUTS`: MQTT topic for workouts (default: `workouttracker/workouts`)
-- `MQTT_BROKER_TOPIC_TOTALS`: MQTT topic for totals (default: `workouttracker/totals`)
 - `WORKOUT_TYPES`: Comma-separated list of workout types to monitor (default: `running,cycling`)
 - `HOMEASSISTANT_DISCOVERY_ENABLED`: Enable Home Assistant autodiscovery (default: `true`)
 - `HOMEASSISTANT_DISCOVERY_PREFIX`: Home Assistant discovery topic prefix (default: `homeassistant`)
@@ -79,18 +78,19 @@ When `HOMEASSISTANT_DISCOVERY_ENABLED` is set to `true` (default), the applicati
 - Latest workout distance per workout type
 - Latest workout duration per workout type
 - Latest workout name per workout type
-- Total distance across all workouts
-- Total duration across all workouts
+- Latest workout date per workout type
+- Latest workout average speed per workout type
+- Statistics (total distance and workouts) per workout type
 
 The sensors will appear in Home Assistant's MQTT integration automatically, requiring no manual configuration.
 
 ## How It Works
 
 1. The application periodically polls the workout-tracker API (default: every 60 seconds)
-2. It fetches the latest workouts and totals from the `/api/v1/workouts` and `/api/v1/totals` endpoints
+2. It fetches the latest workouts and statistics from the `/api/v1/workouts` and `/api/v1/statistics` endpoints
 3. Workout data is filtered by the configured workout types
 4. The latest workout for each type is published to MQTT topics (e.g., `workouttracker/workouts/running`)
-5. Total statistics are published to the totals topic
+5. Statistics (aggregated by workout type) are published to statistics topics (e.g., `workouttracker/statistics/running`)
 6. If enabled, Home Assistant autodiscovery messages are published on startup
 
 ## Development
