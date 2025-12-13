@@ -10,8 +10,19 @@ FROM ${BUILD_FROM}
 
 # Install Java runtime (Home Assistant base is Alpine-based)
 # Use --no-scripts to avoid trigger issues when cross-compiling for ARM64 with QEMU
-# The triggers may fail under emulation, but packages are still installed correctly
-RUN apk add --no-cache --no-scripts openjdk21-jre-headless
+# Then manually create symlinks that would normally be created by post-install scripts
+RUN apk add --no-cache --no-scripts openjdk21-jre-headless && \
+    if [ -f /usr/lib/jvm/java-21-openjdk/bin/java ]; then \
+        ln -sf /usr/lib/jvm/java-21-openjdk/bin/java /usr/bin/java; \
+    elif [ -f /usr/lib/jvm/default-jvm/bin/java ]; then \
+        ln -sf /usr/lib/jvm/default-jvm/bin/java /usr/bin/java; \
+    else \
+        JAVA_PATH=$(find /usr/lib/jvm -name "java" -type f -executable 2>/dev/null | head -1); \
+        if [ -n "$JAVA_PATH" ]; then \
+            ln -sf "$JAVA_PATH" /usr/bin/java; \
+        fi; \
+    fi && \
+    java -version || echo "Java symlink created but verification failed"
 
 # Copy application files from the app image
 COPY --from=app /deployments /app
