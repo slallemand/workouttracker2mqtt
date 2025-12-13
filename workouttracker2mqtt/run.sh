@@ -17,11 +17,11 @@ if [ -n "$MQTT_PASSWORD" ]; then
     export MQTT_BROKER_PASSWORD="$MQTT_PASSWORD"
 fi
 
-# Optional MQTT topic configuration
-# Only export if user explicitly set a value (allows Java default to work if not set)
-if bashio::config.has_value 'mqtt_broker_topic_workouts'; then
-    export MQTT_BROKER_TOPIC_WORKOUTS=$(bashio::config 'mqtt_broker_topic_workouts')
-fi
+# # Optional MQTT topic configuration
+# # Only export if user explicitly set a value (allows Java default to work if not set)
+# if bashio::config.has_value 'mqtt_broker_topic_workouts'; then
+#     export MQTT_BROKER_TOPIC_WORKOUTS=$(bashio::config 'mqtt_broker_topic_workouts')
+# fi
 
 # # Optional MQTT client instance ID (for multi-instance support)
 # # Only export if a non-empty value is provided (default is empty string)
