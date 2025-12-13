@@ -1,7 +1,9 @@
 package com.slallemand.workouttracker2mqtt;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
+import org.apache.camel.Producer;
 import org.apache.camel.builder.RouteBuilder;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
@@ -77,6 +79,19 @@ public class WorkoutRoute extends RouteBuilder {
     @ConfigProperty(name = "workout.types", defaultValue = "running,cycling")
     String workoutTypes;
 
+    // Shared MQTT endpoint URI for connection reuse (topic is set via header)
+    private String baseMqttEndpoint;
+    private String discoveryMqttEndpoint;
+    
+    // Cached Producer instances to ensure single connection per endpoint
+    // Using volatile for thread-safe access
+    private volatile Producer baseMqttProducer;
+    private volatile Producer discoveryMqttProducer;
+    
+    // Track if we've logged connection status for each endpoint
+    private volatile boolean baseMqttConnectedLogged = false;
+    private volatile boolean discoveryMqttConnectedLogged = false;
+
     /**
      * Capitalizes the first letter of a string
      */
@@ -88,7 +103,65 @@ public class WorkoutRoute extends RouteBuilder {
     }
 
     /**
+     * Initializes shared MQTT endpoints and ProducerTemplate for connection reuse
+     * Ensures endpoints are started to establish MQTT connections
+     */
+    private synchronized void initializeMqttEndpoints() {
+        if (baseMqttEndpoint != null) {
+            return; // Already initialized
+        }
+        
+        // Base endpoint for regular messages - topic is set dynamically via header
+        // Using a placeholder topic in URI, actual topic will be set via CamelPahoMQTTTopic header
+        baseMqttEndpoint = "paho:workouttracker" + 
+            "?brokerUrl=" + mqttBrokerUrl + 
+            "&clientId=" + mqttClientId + 
+            "&qos=" + mqttQos + 
+            "&retained=" + mqttRetained + 
+            "&userName=" + (mqttBrokerUsername != null ? mqttBrokerUsername : "") + 
+            "&password=" + (mqttBrokerPassword != null ? mqttBrokerPassword : "");
+        
+        // Separate endpoint for discovery messages (different clientId and qos)
+        discoveryMqttEndpoint = "paho:homeassistant-discovery" + 
+            "?brokerUrl=" + mqttBrokerUrl + 
+            "&clientId=" + mqttClientId + "-discovery" + 
+            "&qos=0" + 
+            "&retained=true" + 
+            "&userName=" + (mqttBrokerUsername != null ? mqttBrokerUsername : "") + 
+            "&password=" + (mqttBrokerPassword != null ? mqttBrokerPassword : "");
+        
+        try {
+            // Get endpoints to register them with the context
+            Endpoint baseEndpoint = getContext().getEndpoint(baseMqttEndpoint);
+            Endpoint discoveryEndpoint = getContext().getEndpoint(discoveryMqttEndpoint);
+            
+            // Create and cache producer instances to ensure single connection per endpoint
+            // This prevents connection churn from creating multiple producers
+            try {
+                baseMqttProducer = baseEndpoint.createProducer();
+                baseMqttProducer.start();
+                log.debug("Base MQTT endpoint producer created and started");
+            } catch (Exception e) {
+                log.warn("Could not create base MQTT producer: " + e.getMessage() + ". Will retry on first publish.", e);
+            }
+            
+            try {
+                discoveryMqttProducer = discoveryEndpoint.createProducer();
+                discoveryMqttProducer.start();
+                log.debug("Discovery MQTT endpoint producer created and started");
+            } catch (Exception e) {
+                log.warn("Could not create discovery MQTT producer: " + e.getMessage() + ". Will retry on first publish.", e);
+            }
+            
+            log.debug("MQTT endpoints initialized: base=" + baseEndpoint + ", discovery=" + discoveryEndpoint);
+        } catch (Exception e) {
+            log.warn("Failed to initialize MQTT endpoints: " + e.getMessage() + ". Will retry on first publish.", e);
+        }
+    }
+
+    /**
      * Publishes a message to MQTT with retry logic. Retries until successful.
+     * Uses a shared connection for better performance by reusing the same endpoint URI.
      * 
      * @param topic MQTT topic to publish to
      * @param message Message body to publish
@@ -97,14 +170,7 @@ public class WorkoutRoute extends RouteBuilder {
      * @param initialRetryDelay Initial delay between retries in milliseconds (default: 1000)
      */
     private void publishToMqttWithRetry(String topic, String message, String description, long maxRetryDelay, long initialRetryDelay) {
-        String mqttEndpoint = "paho:" + topic + 
-            "?brokerUrl=" + mqttBrokerUrl + 
-            "&clientId=" + mqttClientId + 
-            "&qos=" + mqttQos + 
-            "&retained=" + mqttRetained + 
-            "&userName=" + mqttBrokerUsername + 
-            "&password=" + mqttBrokerPassword + 
-            "&lazyStartProducer=true";
+        initializeMqttEndpoints();
         
         long retryDelay = initialRetryDelay;
         int attemptCount = 0;
@@ -113,16 +179,63 @@ public class WorkoutRoute extends RouteBuilder {
         while (!success) {
             attemptCount++;
             try {
-                getContext().createProducerTemplate().sendBody(mqttEndpoint, message);
-                if (attemptCount > 1) {
+                // Ensure producer is available (create if needed, thread-safe)
+                if (baseMqttProducer == null) {
+                    synchronized (this) {
+                        if (baseMqttProducer == null) {
+                            Endpoint baseEndpoint = getContext().getEndpoint(baseMqttEndpoint);
+                            baseMqttProducer = baseEndpoint.createProducer();
+                            baseMqttProducer.start();
+                        }
+                    }
+                }
+                
+                // Use cached Producer directly with header to set topic dynamically
+                // This ensures we use the exact same producer/connection every time
+                Exchange exchange = getContext().getEndpoint(baseMqttEndpoint).createExchange();
+                exchange.getIn().setBody(message);
+                exchange.getIn().setHeader("CamelPahoMQTTTopic", topic);
+                baseMqttProducer.process(exchange);
+                
+                // Log connection status on first successful publish
+                boolean wasPreviouslyConnected = baseMqttConnectedLogged;
+                if (!baseMqttConnectedLogged) {
+                    log.info("Connected to MQTT broker at " + mqttBrokerUrl + " (clientId: " + mqttClientId + ")");
+                    baseMqttConnectedLogged = true;
+                }
+                
+                // Log reconnection if we had to retry after being previously connected
+                if (attemptCount > 1 && wasPreviouslyConnected) {
+                    log.info("MQTT connection re-established. Successfully published " + description + " to MQTT after " + attemptCount + " attempts");
+                } else if (attemptCount > 1) {
                     log.info("MQTT broker is now available. Successfully published " + description + " to MQTT after " + attemptCount + " attempts");
                 } else {
                     log.debug("Published " + description + " to MQTT topic: " + topic);
                 }
                 success = true;
             } catch (Exception e) {
-                log.warn("MQTT broker unavailable for " + description + " (attempt " + attemptCount + "): " + e.getMessage() + 
-                    ". Waiting for broker to become available, retrying in " + retryDelay + "ms...");
+                // Get the root cause for better error reporting
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                String errorMessage = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
+                
+                // Check if this is a connection loss after we were previously connected
+                boolean isConnectionError = errorMessage.contains("non connecté") || 
+                                           errorMessage.contains("not connected") ||
+                                           errorMessage.contains("32104");
+                
+                if (isConnectionError && baseMqttConnectedLogged && attemptCount == 1) {
+                    log.warn("MQTT connection lost for " + description + ". Attempting to reconnect...");
+                }
+                
+                if (attemptCount == 1) {
+                    // Log full exception details on first attempt for debugging
+                    log.warn("MQTT broker unavailable for " + description + " (attempt " + attemptCount + "): " + errorMessage + 
+                        ". Waiting for broker to become available, retrying in " + retryDelay + "ms...", e);
+                } else {
+                    // Log shorter message on subsequent attempts
+                    log.warn("MQTT broker unavailable for " + description + " (attempt " + attemptCount + "): " + errorMessage + 
+                        ". Waiting for broker to become available, retrying in " + retryDelay + "ms...");
+                }
                 
                 // Wait before retrying
                 try {
@@ -179,14 +292,7 @@ public class WorkoutRoute extends RouteBuilder {
             String discoveryTopic = haDiscoveryPrefix + "/sensor/" + haDiscoveryNodeId + "/" + sensorId + "/config";
             String configJson = mapper.writeValueAsString(config);
             
-            String mqttEndpoint = "paho:" + discoveryTopic + 
-                "?brokerUrl=" + mqttBrokerUrl + 
-                "&clientId=" + mqttClientId + "-discovery" + 
-                "&qos=0" + 
-                "&retained=true" + 
-                "&userName=" + mqttBrokerUsername + 
-                "&password=" + mqttBrokerPassword + 
-                "&lazyStartProducer=true";
+            initializeMqttEndpoints();
             
             // Use retry logic to ensure discovery messages are published
             long retryDelay = 1000; // 1 second
@@ -197,16 +303,63 @@ public class WorkoutRoute extends RouteBuilder {
             while (!success) {
                 attemptCount++;
                 try {
-                    exchange.getContext().createProducerTemplate().sendBody(mqttEndpoint, configJson);
-                    if (attemptCount > 1) {
+                    // Ensure producer is available (create if needed, thread-safe)
+                    if (discoveryMqttProducer == null) {
+                        synchronized (this) {
+                            if (discoveryMqttProducer == null) {
+                                Endpoint discoveryEndpoint = getContext().getEndpoint(discoveryMqttEndpoint);
+                                discoveryMqttProducer = discoveryEndpoint.createProducer();
+                                discoveryMqttProducer.start();
+                            }
+                        }
+                    }
+                    
+                    // Use cached Producer directly with header to set topic dynamically
+                    // This ensures we use the exact same producer/connection every time
+                    Exchange discoveryExchange = getContext().getEndpoint(discoveryMqttEndpoint).createExchange();
+                    discoveryExchange.getIn().setBody(configJson);
+                    discoveryExchange.getIn().setHeader("CamelPahoMQTTTopic", discoveryTopic);
+                    discoveryMqttProducer.process(discoveryExchange);
+                    
+                    // Log connection status on first successful publish for discovery endpoint
+                    boolean wasPreviouslyConnected = discoveryMqttConnectedLogged;
+                    if (!discoveryMqttConnectedLogged) {
+                        log.info("Connected to MQTT broker for discovery messages at " + mqttBrokerUrl + " (clientId: " + mqttClientId + "-discovery)");
+                        discoveryMqttConnectedLogged = true;
+                    }
+                    
+                    // Log reconnection if we had to retry after being previously connected
+                    if (attemptCount > 1 && wasPreviouslyConnected) {
+                        log.info("MQTT discovery connection re-established. Successfully published Home Assistant discovery for " + sensorName + " after " + attemptCount + " attempts");
+                    } else if (attemptCount > 1) {
                         log.info("Successfully published Home Assistant discovery for " + sensorName + " after " + attemptCount + " attempts");
                     } else {
                         log.debug("Published Home Assistant discovery for: " + sensorName + " (topic: " + discoveryTopic + ")");
                     }
                     success = true;
                 } catch (Exception e) {
-                    log.warn("MQTT broker unavailable for Home Assistant discovery (" + sensorName + ") (attempt " + attemptCount + "): " + e.getMessage() + 
-                        ". Retrying in " + retryDelay + "ms...");
+                    // Get the root cause for better error reporting
+                    Throwable cause = e.getCause() != null ? e.getCause() : e;
+                    String errorMessage = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
+                    
+                    // Check if this is a connection loss after we were previously connected
+                    boolean isConnectionError = errorMessage.contains("non connecté") || 
+                                               errorMessage.contains("not connected") ||
+                                               errorMessage.contains("32104");
+                    
+                    if (isConnectionError && discoveryMqttConnectedLogged && attemptCount == 1) {
+                        log.warn("MQTT discovery connection lost for " + sensorName + ". Attempting to reconnect...");
+                    }
+                    
+                    if (attemptCount == 1) {
+                        // Log full exception details on first attempt for debugging
+                        log.warn("MQTT broker unavailable for Home Assistant discovery (" + sensorName + ") (attempt " + attemptCount + "): " + errorMessage + 
+                            ". Retrying in " + retryDelay + "ms...", e);
+                    } else {
+                        // Log shorter message on subsequent attempts
+                        log.warn("MQTT broker unavailable for Home Assistant discovery (" + sensorName + ") (attempt " + attemptCount + "): " + errorMessage + 
+                            ". Retrying in " + retryDelay + "ms...");
+                    }
                     
                     // Wait before retrying
                     try {
