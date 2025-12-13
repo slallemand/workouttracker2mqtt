@@ -37,12 +37,12 @@ options:
     description: "MQTT broker connection URL (use 'core-mosquitto' for Home Assistant's built-in MQTT broker)"
   mqtt_broker_username:
     type: string
-    required: false
+    required: true
     example: "mqtt_user"
     description: "MQTT broker username (optional, leave empty for Home Assistant's built-in broker)"
   mqtt_broker_password:
     type: string
-    required: false
+    required: true
     example: "mqtt_password"
     description: "MQTT broker password (optional, leave empty for Home Assistant's built-in broker)"
   mqtt_broker_topic_workouts:
@@ -53,6 +53,7 @@ options:
   mqtt_broker_client_instance_id:
     type: string
     required: false
+    default: null
     example: "instance1"
     description: "Instance ID to append to MQTT client ID (for multi-instance support). If not set, generates a random UUID"
   workout_types:
