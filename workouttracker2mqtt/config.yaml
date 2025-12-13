@@ -1,6 +1,6 @@
 name: Workout Tracker
 description: Bridge between workout-tracker and MQTT for Home Assistant integration
-version: "1.5.3a"
+version: "1.6.0"
 slug: workouttracker2mqtt
 init: false
 arch:
@@ -16,6 +16,7 @@ ports:
   8080/tcp: null
 ports_description:
   8080/tcp: Application port (not used, but required by Quarkus)
+image: slallemand/workouttracker-addon
 
 options:
   workout-tracker:
@@ -26,21 +27,22 @@ options:
     mqtt_broker_url: "tcp://core-mosquitto:1883"
     mqtt_broker_username: null
     mqtt_broker_password: null
-    mqtt_broker_topic_workouts: "workouttracker/workouts"
+    # mqtt_broker_topic_workouts: "workouttracker/workouts"
     mqtt_broker_client_instance_id: null
-  homeassistant_discovery_enabled: true
-  homeassistant_discovery_prefix: "homeassistant"
-  homeassistant_discovery_node_id: "workouttracker"
+  homeassistant:
+    homeassistant_discovery_enabled: true
+    homeassistant_discovery_prefix: "homeassistant"
+    homeassistant_discovery_node_id: "workouttracker"
   camel_route_timer_period: 60000
 schema:
   workouttracker_api_server_url: url
   workouttracker_api_key: password
+  workout_types: str?
   mqtt_broker_url: url
   mqtt_broker_username: str?
   mqtt_broker_password: password?
-  mqtt_broker_topic_workouts: str?
+  # mqtt_broker_topic_workouts: str?
   mqtt_broker_client_instance_id: str?
-  workout_types: str?
   homeassistant_discovery_enabled: bool?
   homeassistant_discovery_prefix: str?
   homeassistant_discovery_node_id: str?
