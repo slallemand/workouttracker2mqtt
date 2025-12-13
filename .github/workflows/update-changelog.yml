@@ -104,23 +104,16 @@ jobs:
           elif [ "${{ github.event_name }}" = "push" ]; then
             CHANGELOG_CONTENT="${{ steps.generate_changelog.outputs.changelog_entry }}"
             if [ -n "$CHANGELOG_CONTENT" ]; then
-              CHANGELOG_CONTENT="### Changed
-$CHANGELOG_CONTENT"
+              CHANGELOG_CONTENT=$(printf "### Changed\n%s" "$CHANGELOG_CONTENT")
             else
-              CHANGELOG_CONTENT="### Changed
-- Version bump to $VERSION"
+              CHANGELOG_CONTENT=$(printf "### Changed\n- Version bump to %s" "$VERSION")
             fi
           else
-            CHANGELOG_CONTENT="### Changed
-- Version bump to $VERSION"
+            CHANGELOG_CONTENT=$(printf "### Changed\n- Version bump to %s" "$VERSION")
           fi
           
           # Create new changelog entry
-          NEW_ENTRY="## [$VERSION] - $DATE
-
-$CHANGELOG_CONTENT
-
-"
+          NEW_ENTRY=$(printf "## [%s] - %s\n\n%s\n\n" "$VERSION" "$DATE" "$CHANGELOG_CONTENT")
           
           # Insert at the top of CHANGELOG.md (after the header)
           if [ -f workouttracker2mqtt/CHANGELOG.md ]; then
