@@ -70,7 +70,7 @@ jobs:
           labels: ${{ steps.app_meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/aarch64
 
   build-addon:
     needs: build-app
@@ -85,7 +85,7 @@ jobs:
             platform: linux/amd64
             base_image: ghcr.io/home-assistant/amd64-base:latest
           - arch: aarch64
-            platform: linux/arm64
+            platform: linux/aarch64
             base_image: ghcr.io/home-assistant/aarch64-base:latest
 
     steps:
