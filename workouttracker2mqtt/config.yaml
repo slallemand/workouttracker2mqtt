@@ -19,20 +19,15 @@ ports_description:
 image: slallemand/workouttracker-addon
 
 options:
-  workout-tracker:
-    workouttracker_api_server_url: "http://workout-tracker:8080"
-    workouttracker_api_key: "Bearer your-api-key-here"
-    workout_types: "running,cycling"
-  mqtt-broker:
-    mqtt_broker_url: "tcp://core-mosquitto:1883"
-    mqtt_broker_username: null
-    mqtt_broker_password: null
-    # mqtt_broker_topic_workouts: "workouttracker/workouts"
-    mqtt_broker_client_instance_id: null
-  homeassistant:
-    homeassistant_discovery_enabled: true
-    homeassistant_discovery_prefix: "homeassistant"
-    homeassistant_discovery_node_id: "workouttracker"
+  workouttracker_api_server_url: "http://workout-tracker:8080"
+  workouttracker_api_key: "Bearer your-api-key-here"
+  workout_types: "running,cycling"
+  mqtt_broker_url: "tcp://core-mosquitto:1883"
+  mqtt_broker_username: null
+  mqtt_broker_password: null
+  homeassistant_discovery_enabled: true
+  homeassistant_discovery_prefix: "homeassistant"
+  homeassistant_discovery_node_id: "workouttracker"
   camel_route_timer_period: 60000
 schema:
   workouttracker_api_server_url: url
@@ -41,8 +36,6 @@ schema:
   mqtt_broker_url: url
   mqtt_broker_username: str?
   mqtt_broker_password: password?
-  # mqtt_broker_topic_workouts: str?
-  mqtt_broker_client_instance_id: str?
   homeassistant_discovery_enabled: bool?
   homeassistant_discovery_prefix: str?
   homeassistant_discovery_node_id: str?

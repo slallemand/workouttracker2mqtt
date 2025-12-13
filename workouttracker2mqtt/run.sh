@@ -5,17 +5,6 @@ export WORKOUTTRACKER_API_SERVER_URL=$(bashio::config 'workouttracker_api_server
 export WORKOUTTRACKER_API_KEY=$(bashio::config 'workouttracker_api_key')
 export MQTT_BROKER_URL=$(bashio::config 'mqtt_broker_url')
 
-
-options=$(bashio::addon.options)
-old_keys='mqtt_broker_topic_workouts mqtt_broker_client_instance_id'
-
-for old_key in $old_keys; do
-    if bashio::jq.exists "${options}" ".${old_key}"; then
-        bashio::log.info "Removing ${old_key}"
-        bashio::addon.option "${old_key}"
-    fi
-done
-
 # Optional MQTT broker credentials
 # Only export if non-empty values are provided (defaults are empty strings)
 MQTT_USERNAME=$(bashio::config 'mqtt_broker_username' '')
@@ -28,18 +17,7 @@ if [ -n "$MQTT_PASSWORD" ]; then
     export MQTT_BROKER_PASSWORD="$MQTT_PASSWORD"
 fi
 
-# # Optional MQTT topic configuration
-# # Only export if user explicitly set a value (allows Java default to work if not set)
-# if bashio::config.has_value 'mqtt_broker_topic_workouts'; then
-#     export MQTT_BROKER_TOPIC_WORKOUTS=$(bashio::config 'mqtt_broker_topic_workouts')
-# fi
 
-# # Optional MQTT client instance ID (for multi-instance support)
-# # Only export if a non-empty value is provided (default is empty string)
-# INSTANCE_ID=$(bashio::config 'mqtt_broker_client_instance_id' '')
-# if [ -n "$INSTANCE_ID" ]; then
-#     export MQTT_BROKER_CLIENT_INSTANCE_ID="$INSTANCE_ID"
-# fi
 
 # Optional workout types
 # Only export if user explicitly set a value (allows Java default to work if not set)
