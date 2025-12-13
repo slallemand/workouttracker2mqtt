@@ -1,9 +1,8 @@
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest
-FROM ${BUILD_FROM}
-
-# Copy the application from the workouttracker2mqtt image
+# Stage 1: Get the application from the workouttracker2mqtt image
 FROM ghcr.io/slallemand/workouttracker2mqtt:latest AS app
 
+# Stage 2: Build the addon with Home Assistant base image
+# BUILD_FROM is passed from the workflow and contains the correct base image for each architecture
 ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest
 FROM ${BUILD_FROM}
 
@@ -16,4 +15,3 @@ COPY --from=app /deployments /app
 # Copy run script
 COPY run.sh /etc/services.d/workouttracker2mqtt/run
 RUN chmod a+x /etc/services.d/workouttracker2mqtt/run
-
