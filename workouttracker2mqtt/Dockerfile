@@ -8,10 +8,11 @@ FROM ghcr.io/slallemand/workouttracker2mqtt:latest AS app
 # Stage 2: Build the addon with Home Assistant base image
 FROM ${BUILD_FROM}
 
-# Install Java runtime (Home Assistant base is Alpine-based)
-# Use --no-scripts to avoid trigger issues when cross-compiling for ARM64 with QEMU
-# Then manually create symlinks that would normally be created by post-install scripts
-RUN apk add --no-cache --no-scripts openjdk21-jre-headless && \
+# Install Java runtime and CA certificates (Home Assistant base is Alpine-based)
+# Install java-cacerts separately without --no-scripts so its update script runs
+# This script imports system CA certificates into Java's truststore
+RUN apk add --no-cache --no-scripts openjdk21-jre-headless ca-certificates && \
+    apk add --no-cache java-cacerts && \
     if [ -f /usr/lib/jvm/java-21-openjdk/bin/java ]; then \
         ln -sf /usr/lib/jvm/java-21-openjdk/bin/java /usr/bin/java; \
     elif [ -f /usr/lib/jvm/default-jvm/bin/java ]; then \
