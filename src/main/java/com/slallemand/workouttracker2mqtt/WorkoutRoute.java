@@ -5,7 +5,11 @@ import org.apache.camel.Endpoint;
 import org.apache.camel.Exchange;
 import org.apache.camel.Producer;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.paho.PahoComponent;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.paho.client.mqttv3.MqttClient;
+import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
+import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -82,15 +86,18 @@ public class WorkoutRoute extends RouteBuilder {
     private static final String MQTT_WORKOUTS_TOPIC = MQTT_BASE_TOPIC + "/workouts";
     private static final String MQTT_STATISTICS_TOPIC = MQTT_BASE_TOPIC + "/statistics";
 
-    // Shared MQTT endpoint URI for connection reuse (topic, QoS, and retained are set via headers)
-    private String baseMqttEndpoint;
-    
     // Unique client ID for this instance (generated from base client ID + instance identifier)
     private String uniqueClientId;
     
-    // Cached Producer instance to ensure single connection
-    // Using volatile for thread-safe access
-    private volatile Producer baseMqttProducer;
+    // Shared MQTT client instance - all endpoints will use this to ensure single connection
+    private volatile MqttClient sharedMqttClient;
+    
+    // Cache of topic-specific endpoints - all share the same MQTT client for connection reuse
+    // Using ConcurrentHashMap for thread-safe access
+    private final java.util.concurrent.ConcurrentHashMap<String, Endpoint> topicEndpointCache = new java.util.concurrent.ConcurrentHashMap<>();
+    
+    // Cache of producers for each endpoint to avoid recreating them
+    private final java.util.concurrent.ConcurrentHashMap<String, Producer> topicProducerCache = new java.util.concurrent.ConcurrentHashMap<>();
     
     // Track if we've logged connection status
     private volatile boolean baseMqttConnectedLogged = false;
@@ -134,11 +141,11 @@ public class WorkoutRoute extends RouteBuilder {
     }
 
     /**
-     * Initializes shared MQTT endpoints and ProducerTemplate for connection reuse
-     * Ensures endpoints are started to establish MQTT connections
+     * Initializes shared MQTT client and configures Paho component to use it
+     * This ensures all endpoints share the same MQTT connection
      */
     private synchronized void initializeMqttEndpoints() {
-        if (baseMqttEndpoint != null) {
+        if (uniqueClientId != null && sharedMqttClient != null) {
             return; // Already initialized
         }
         
@@ -146,35 +153,71 @@ public class WorkoutRoute extends RouteBuilder {
         this.uniqueClientId = generateUniqueClientId(mqttClientId);
         log.info("Using MQTT client ID: " + uniqueClientId + " (base: " + mqttClientId + ")");
         
-        // Single endpoint for all messages - topic, QoS, and retained are set dynamically via headers
-        // Using a placeholder topic in URI, actual topic will be set via CamelPahoMQTTTopic header
-        // QoS and retained can be overridden per message via CamelPahoMQTTQoS and CamelPahoMQTTRetained headers
-        baseMqttEndpoint = "paho:workouttracker" + 
-            "?brokerUrl=" + mqttBrokerUrl + 
-            "&clientId=" + uniqueClientId + 
-            "&qos=" + mqttQos + 
-            "&retained=" + mqttRetained + 
-            "&userName=" + (mqttBrokerUsername != null ? mqttBrokerUsername : "") + 
-            "&password=" + (mqttBrokerPassword != null ? mqttBrokerPassword : "");
-        
         try {
-            // Get endpoint to register it with the context
-            Endpoint baseEndpoint = getContext().getEndpoint(baseMqttEndpoint);
+            // Create shared MQTT client
+            sharedMqttClient = new MqttClient(mqttBrokerUrl, uniqueClientId, new MemoryPersistence());
             
-            // Create and cache producer instance to ensure single connection
-            // This prevents connection churn from creating multiple producers
-            try {
-                baseMqttProducer = baseEndpoint.createProducer();
-                baseMqttProducer.start();
-                log.debug("MQTT endpoint producer created and started");
-            } catch (Exception e) {
-                log.warn("Could not create MQTT producer: " + e.getMessage() + ". Will retry on first publish.", e);
+            // Configure connection options
+            MqttConnectOptions connOpts = new MqttConnectOptions();
+            connOpts.setCleanSession(true);
+            if (mqttBrokerUsername != null && !mqttBrokerUsername.isEmpty()) {
+                connOpts.setUserName(mqttBrokerUsername);
+            }
+            if (mqttBrokerPassword != null && !mqttBrokerPassword.isEmpty()) {
+                connOpts.setPassword(mqttBrokerPassword.toCharArray());
             }
             
-            log.debug("MQTT endpoint initialized: " + baseEndpoint);
+            // Connect the shared client
+            sharedMqttClient.connect(connOpts);
+            log.debug("Connected shared MQTT client: " + uniqueClientId);
+            
+            // Configure Paho component to use the shared client
+            PahoComponent pahoComponent = getContext().getComponent("paho", PahoComponent.class);
+            if (pahoComponent != null) {
+                pahoComponent.setClient(sharedMqttClient);
+                log.debug("Configured Paho component to use shared MQTT client");
+            }
         } catch (Exception e) {
-            log.warn("Failed to initialize MQTT endpoint: " + e.getMessage() + ". Will retry on first publish.", e);
+            log.warn("Failed to initialize shared MQTT client: " + e.getMessage() + ". Will retry on first publish.", e);
+            sharedMqttClient = null;
         }
+    }
+    
+    /**
+     * Gets or creates the endpoint and producer for a specific topic
+     * All endpoints use the shared MQTT client, ensuring a single connection
+     */
+    private Producer getTopicProducer(String topic) {
+        return topicProducerCache.computeIfAbsent(topic, t -> {
+            try {
+                // Build endpoint URI with the specific topic
+                // Don't specify clientId - the shared client from PahoComponent will be used
+                String endpointUri = "paho:" + t + 
+                    "?qos=" + mqttQos + 
+                    "&retained=" + mqttRetained;
+                
+                // Get or create endpoint
+                Endpoint endpoint = topicEndpointCache.computeIfAbsent(t, topicKey -> {
+                    try {
+                        Endpoint e = getContext().getEndpoint(endpointUri);
+                        log.debug("Created endpoint for topic: " + topicKey);
+                        return e;
+                    } catch (Exception ex) {
+                        log.error("Failed to create endpoint for topic '" + topicKey + "': " + ex.getMessage(), ex);
+                        throw new RuntimeException("Failed to create endpoint", ex);
+                    }
+                });
+                
+                // Create and start producer
+                Producer producer = endpoint.createProducer();
+                producer.start();
+                log.debug("Created producer for topic: " + t);
+                return producer;
+            } catch (Exception e) {
+                log.error("Failed to create producer for topic '" + t + "': " + e.getMessage(), e);
+                throw new RuntimeException("Failed to create producer", e);
+            }
+        });
     }
 
     /**
@@ -197,23 +240,25 @@ public class WorkoutRoute extends RouteBuilder {
         while (!success) {
             attemptCount++;
             try {
-                // Ensure producer is available (create if needed, thread-safe)
-                if (baseMqttProducer == null) {
+                // Ensure client ID is initialized
+                if (uniqueClientId == null) {
                     synchronized (this) {
-                        if (baseMqttProducer == null) {
-                            Endpoint baseEndpoint = getContext().getEndpoint(baseMqttEndpoint);
-                            baseMqttProducer = baseEndpoint.createProducer();
-                            baseMqttProducer.start();
+                        if (uniqueClientId == null) {
+                            initializeMqttEndpoints();
                         }
                     }
                 }
                 
-                // Use cached Producer directly with header to set topic dynamically
-                // This ensures we use the exact same producer/connection every time
-                Exchange exchange = getContext().getEndpoint(baseMqttEndpoint).createExchange();
+                // Get or create producer for this specific topic
+                // All producers share the same clientId, so Camel Paho should reuse the MQTT connection
+                Producer topicProducer = getTopicProducer(topic);
+                Endpoint topicEndpoint = topicEndpointCache.get(topic);
+                
+                Exchange exchange = topicEndpoint.createExchange();
                 exchange.getIn().setBody(message);
-                exchange.getIn().setHeader("CamelPahoMQTTTopic", topic);
-                baseMqttProducer.process(exchange);
+                log.debug("Publishing to MQTT topic: '" + topic + "' using topic-specific producer");
+                topicProducer.process(exchange);
+                log.debug("Successfully published message to topic: '" + topic + "'");
                 
                 // Log connection status on first successful publish
                 boolean wasPreviouslyConnected = baseMqttConnectedLogged;
@@ -241,8 +286,10 @@ public class WorkoutRoute extends RouteBuilder {
                                            errorMessage.contains("not connected") ||
                                            errorMessage.contains("32104");
                 
+                // Log connection loss but don't invalidate endpoint - let Camel Paho handle reconnection
+                // Invalidating endpoints causes connection churn as it forces new connections
                 if (isConnectionError && baseMqttConnectedLogged && attemptCount == 1) {
-                    log.warn("MQTT connection lost for " + description + ". Attempting to reconnect...");
+                    log.warn("MQTT connection lost for " + description + ". Retrying with existing endpoint (Camel will handle reconnection)...");
                 }
                 
                 if (attemptCount == 1) {
@@ -321,25 +368,50 @@ public class WorkoutRoute extends RouteBuilder {
             while (!success) {
                 attemptCount++;
                 try {
-                    // Ensure producer is available (create if needed, thread-safe)
-                    if (baseMqttProducer == null) {
+                    // Ensure client ID is initialized
+                    if (uniqueClientId == null) {
                         synchronized (this) {
-                            if (baseMqttProducer == null) {
-                                Endpoint baseEndpoint = getContext().getEndpoint(baseMqttEndpoint);
-                                baseMqttProducer = baseEndpoint.createProducer();
-                                baseMqttProducer.start();
+                            if (uniqueClientId == null) {
+                                initializeMqttEndpoints();
                             }
                         }
                     }
                     
-                    // Use cached Producer directly with headers to set topic, QoS, and retained dynamically
-                    // This ensures we use the exact same producer/connection every time
-                    Exchange discoveryExchange = getContext().getEndpoint(baseMqttEndpoint).createExchange();
+                    // Get or create producer for this specific discovery topic
+                    // Discovery messages use QoS 0 and retained=true
+                    // Don't specify clientId - the shared client from PahoComponent will be used
+                    String discoveryEndpointUri = "paho:" + discoveryTopic + 
+                        "?qos=0" +  // Discovery messages use QoS 0
+                        "&retained=true";  // Discovery messages are retained
+                    
+                    // Get or create endpoint and producer for discovery topic
+                    Endpoint discoveryEndpoint = topicEndpointCache.computeIfAbsent(discoveryTopic, t -> {
+                        try {
+                            Endpoint e = getContext().getEndpoint(discoveryEndpointUri);
+                            log.debug("Created discovery endpoint for topic: " + t);
+                            return e;
+                        } catch (Exception ex) {
+                            log.error("Failed to create discovery endpoint for topic '" + t + "': " + ex.getMessage(), ex);
+                            throw new RuntimeException("Failed to create discovery endpoint", ex);
+                        }
+                    });
+                    
+                    Producer discoveryProducer = topicProducerCache.computeIfAbsent(discoveryTopic, t -> {
+                        try {
+                            Producer p = discoveryEndpoint.createProducer();
+                            p.start();
+                            log.debug("Created discovery producer for topic: " + t);
+                            return p;
+                        } catch (Exception ex) {
+                            log.error("Failed to create discovery producer for topic '" + t + "': " + ex.getMessage(), ex);
+                            throw new RuntimeException("Failed to create discovery producer", ex);
+                        }
+                    });
+                    
+                    Exchange discoveryExchange = discoveryEndpoint.createExchange();
                     discoveryExchange.getIn().setBody(configJson);
-                    discoveryExchange.getIn().setHeader("CamelPahoMQTTTopic", discoveryTopic);
-                    discoveryExchange.getIn().setHeader("CamelPahoMQTTQoS", 0); // Discovery messages use QoS 0
-                    discoveryExchange.getIn().setHeader("CamelPahoMQTTRetained", true); // Discovery messages are retained
-                    baseMqttProducer.process(discoveryExchange);
+                    log.debug("Publishing discovery to MQTT topic: '" + discoveryTopic + "' using topic-specific producer");
+                    discoveryProducer.process(discoveryExchange);
                     
                     // Log connection status on first successful publish (if not already logged)
                     boolean wasPreviouslyConnected = baseMqttConnectedLogged;
@@ -367,8 +439,10 @@ public class WorkoutRoute extends RouteBuilder {
                                                errorMessage.contains("not connected") ||
                                                errorMessage.contains("32104");
                     
+                    // Log connection loss but don't invalidate endpoint - let Camel Paho handle reconnection
+                    // Invalidating endpoints causes connection churn as it forces new connections
                     if (isConnectionError && baseMqttConnectedLogged && attemptCount == 1) {
-                        log.warn("MQTT connection lost for " + sensorName + ". Attempting to reconnect...");
+                        log.warn("MQTT connection lost for " + sensorName + ". Retrying with existing endpoint (Camel will handle reconnection)...");
                     }
                     
                     if (attemptCount == 1) {
