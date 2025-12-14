@@ -58,5 +58,5 @@ fi
 
 # Start the application
 cd /app
-env
+env | sort
 exec java -jar quarkus-run.jar

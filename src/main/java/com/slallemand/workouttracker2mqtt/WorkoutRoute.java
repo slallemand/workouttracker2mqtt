@@ -228,7 +228,7 @@ public class WorkoutRoute extends RouteBuilder {
                 } else if (attemptCount > 1) {
                     log.info("MQTT broker is now available. Successfully published " + description + " to MQTT after " + attemptCount + " attempts");
                 } else {
-                    log.debug("Published " + description + " to MQTT topic: " + topic);
+                    log.info("Published " + description + " to MQTT topic: " + topic);
                 }
                 success = true;
             } catch (Exception e) {
@@ -416,6 +416,10 @@ public class WorkoutRoute extends RouteBuilder {
             .filter(s -> !s.isEmpty())
             .collect(Collectors.toSet());
         
+        // Log MQTT topic structure at startup
+        log.info("MQTT topics configured - Base: " + MQTT_BASE_TOPIC + ", Workouts: " + MQTT_WORKOUTS_TOPIC + "/<activity>, Statistics: " + MQTT_STATISTICS_TOPIC + "/<activity>");
+        log.info("Monitoring workout types: " + String.join(", ", selectedTypes));
+        
         // Route to publish Home Assistant discovery messages on startup (runs once after context is ready)
         if (haDiscoveryEnabled) {
             from("timer:ha-discovery?repeatCount=1&delay=5000")
@@ -425,6 +429,7 @@ public class WorkoutRoute extends RouteBuilder {
                     for (String workoutType : selectedTypes) {
                         String typeTopic = MQTT_WORKOUTS_TOPIC + "/" + workoutType.toLowerCase();
                         String typeId = workoutType.toLowerCase().replaceAll("[^a-z0-9]", "_");
+                        log.info("Publishing Home Assistant discovery for workout type: " + workoutType + " (topic: " + typeTopic + ")");
                         
                         publishHomeAssistantDiscovery(
                             exchange,
@@ -481,6 +486,7 @@ public class WorkoutRoute extends RouteBuilder {
                     for (String workoutType : selectedTypes) {
                         String typeId = workoutType.toLowerCase().replaceAll("[^a-z0-9]", "_");
                         String statisticsTopic = MQTT_STATISTICS_TOPIC + "/" + workoutType.toLowerCase();
+                        log.info("Publishing Home Assistant discovery for statistics type: " + workoutType + " (topic: " + statisticsTopic + ")");
                         
                         publishHomeAssistantDiscovery(
                             exchange,
@@ -627,7 +633,10 @@ public class WorkoutRoute extends RouteBuilder {
                             String workoutJson = exchange.getProperty("latest_workout_" + workoutType.toLowerCase(), String.class);
                             if (workoutJson != null) {
                                 String typeTopic = MQTT_WORKOUTS_TOPIC + "/" + workoutType.toLowerCase();
+                                log.info("Publishing workout to MQTT topic: " + typeTopic + " (type: " + workoutType + ")");
                                 publishToMqttWithRetry(typeTopic, workoutJson, "latest " + workoutType + " workout", 30000, 1000);
+                            } else {
+                                log.debug("No workout found for type: " + workoutType + ", skipping MQTT publish");
                             }
                         }
                     })
@@ -718,10 +727,9 @@ public class WorkoutRoute extends RouteBuilder {
                             
                             // Send to MQTT with type-specific topic
                             String typeTopic = MQTT_STATISTICS_TOPIC + "/" + typeLower;
+                            log.info("Publishing statistics to MQTT topic: " + typeTopic + " (type: " + workoutType + ", workouts: " + totalWorkouts + ", distance: " + 
+                                String.format("%.2f", totalDistance / 1000) + " km)");
                             publishToMqttWithRetry(typeTopic, aggregatedJson, workoutType + " statistics", 30000, 1000);
-                            
-                            log.info("Published statistics for " + workoutType + ": " + totalWorkouts + " workouts, " + 
-                                String.format("%.2f", totalDistance / 1000) + " km total distance");
                         }
                     })
                 .otherwise()
