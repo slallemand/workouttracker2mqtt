@@ -58,4 +58,5 @@ fi
 
 # Start the application
 cd /app
+env
 exec java -jar quarkus-run.jar
