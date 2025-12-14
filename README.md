@@ -29,8 +29,9 @@ The application can be run using a container image. You need to provide the foll
 
 - `MQTT_BROKER_USERNAME`: MQTT broker username (if authentication is required)
 - `MQTT_BROKER_PASSWORD`: MQTT broker password (if authentication is required)
-- `MQTT_BROKER_TOPIC_WORKOUTS`: MQTT topic for workouts (default: `workouttracker/workouts`)
 - `WORKOUT_TYPES`: Comma-separated list of workout types to monitor (default: `running,cycling`)
+
+**Note:** MQTT topics are hardcoded to `workouttracker/workouts/<activity>` for workouts and `workouttracker/statistics/<activity>` for statistics, where `<activity>` is the workout type (e.g., `running`, `cycling`).
 - `HOMEASSISTANT_DISCOVERY_ENABLED`: Enable Home Assistant autodiscovery (default: `true`)
 - `HOMEASSISTANT_DISCOVERY_PREFIX`: Home Assistant discovery topic prefix (default: `homeassistant`)
 - `HOMEASSISTANT_DISCOVERY_NODE_ID`: Node ID for Home Assistant discovery (default: `workouttracker`)

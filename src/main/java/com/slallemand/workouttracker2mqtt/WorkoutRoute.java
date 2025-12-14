@@ -47,12 +47,6 @@ public class WorkoutRoute extends RouteBuilder {
     @ConfigProperty(name = "mqtt.broker.client.instance.id")
     Optional<String> mqttClientInstanceId;
 
-    @ConfigProperty(name = "mqtt.broker.topic.workouts")
-    String mqttTopic;
-
-    @ConfigProperty(name = "mqtt.broker.topic.statistics")
-    String mqttStatisticsTopic;
-
     @ConfigProperty(name = "mqtt.broker.qos", defaultValue = "1")
     int mqttQos;
 
@@ -82,6 +76,11 @@ public class WorkoutRoute extends RouteBuilder {
 
     @ConfigProperty(name = "workout.types", defaultValue = "running,cycling")
     String workoutTypes;
+
+    // Hardcoded MQTT topics (enforced structure)
+    private static final String MQTT_BASE_TOPIC = "workouttracker";
+    private static final String MQTT_WORKOUTS_TOPIC = MQTT_BASE_TOPIC + "/workouts";
+    private static final String MQTT_STATISTICS_TOPIC = MQTT_BASE_TOPIC + "/statistics";
 
     // Shared MQTT endpoint URI for connection reuse (topic, QoS, and retained are set via headers)
     private String baseMqttEndpoint;
@@ -424,7 +423,7 @@ public class WorkoutRoute extends RouteBuilder {
                 .process(exchange -> {
                     // Discovery for each workout type
                     for (String workoutType : selectedTypes) {
-                        String typeTopic = mqttTopic + "/" + workoutType;
+                        String typeTopic = MQTT_WORKOUTS_TOPIC + "/" + workoutType.toLowerCase();
                         String typeId = workoutType.toLowerCase().replaceAll("[^a-z0-9]", "_");
                         
                         publishHomeAssistantDiscovery(
@@ -481,7 +480,7 @@ public class WorkoutRoute extends RouteBuilder {
                     // Discovery for statistics data (total distance and workouts by type)
                     for (String workoutType : selectedTypes) {
                         String typeId = workoutType.toLowerCase().replaceAll("[^a-z0-9]", "_");
-                        String statisticsTopic = mqttStatisticsTopic + "/" + workoutType.toLowerCase();
+                        String statisticsTopic = MQTT_STATISTICS_TOPIC + "/" + workoutType.toLowerCase();
                         
                         publishHomeAssistantDiscovery(
                             exchange,
@@ -627,7 +626,7 @@ public class WorkoutRoute extends RouteBuilder {
                         for (String workoutType : selectedTypes) {
                             String workoutJson = exchange.getProperty("latest_workout_" + workoutType.toLowerCase(), String.class);
                             if (workoutJson != null) {
-                                String typeTopic = mqttTopic + "/" + workoutType.toLowerCase();
+                                String typeTopic = MQTT_WORKOUTS_TOPIC + "/" + workoutType.toLowerCase();
                                 publishToMqttWithRetry(typeTopic, workoutJson, "latest " + workoutType + " workout", 30000, 1000);
                             }
                         }
@@ -718,7 +717,7 @@ public class WorkoutRoute extends RouteBuilder {
                             String aggregatedJson = mapper.writeValueAsString(aggregatedStats);
                             
                             // Send to MQTT with type-specific topic
-                            String typeTopic = mqttStatisticsTopic + "/" + typeLower;
+                            String typeTopic = MQTT_STATISTICS_TOPIC + "/" + typeLower;
                             publishToMqttWithRetry(typeTopic, aggregatedJson, workoutType + " statistics", 30000, 1000);
                             
                             log.info("Published statistics for " + workoutType + ": " + totalWorkouts + " workouts, " + 

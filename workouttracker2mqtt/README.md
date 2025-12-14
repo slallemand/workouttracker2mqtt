@@ -32,8 +32,9 @@ This Home Assistant add-on bridges [workout-tracker](https://github.com/jovandeg
 
 - **mqtt_broker_username**: MQTT broker username (leave empty for Home Assistant's built-in broker)
 - **mqtt_broker_password**: MQTT broker password (leave empty for Home Assistant's built-in broker)
-- **mqtt_broker_topic_workouts**: MQTT topic for workouts (default: `workouttracker/workouts`)
 - **workout_types**: Comma-separated list of workout types to monitor (default: `running,cycling`)
+
+**Note:** MQTT topics are hardcoded to `workouttracker/workouts/<activity>` for workouts and `workouttracker/statistics/<activity>` for statistics, where `<activity>` is the workout type (e.g., `running`, `cycling`).
 - **homeassistant_discovery_enabled**: Enable Home Assistant autodiscovery (default: `true`)
 - **homeassistant_discovery_prefix**: Home Assistant discovery topic prefix (default: `homeassistant`)
 - **homeassistant_discovery_node_id**: Node ID for Home Assistant discovery (default: `workouttracker`)
