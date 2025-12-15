@@ -29,6 +29,7 @@ options:
   homeassistant_discovery_prefix: "homeassistant"
   homeassistant_discovery_node_id: "workouttracker"
   camel_route_timer_period: 60000
+  quakus_log_level: "INFO"
 schema:
   workouttracker_api_server_url: url
   workouttracker_api_key: password
@@ -40,3 +41,4 @@ schema:
   homeassistant_discovery_prefix: str?
   homeassistant_discovery_node_id: str?
   camel_route_timer_period: int?
+  quakus_log_level: list(INFO|DEBUG|WARN|ERROR)

@@ -56,6 +56,10 @@ if bashio::config.has_value 'camel_route_timer_period'; then
     export CAMEL_ROUTE_TIMER_PERIOD=$(bashio::config 'camel_route_timer_period')
 fi
 
+if bashio::config.has_value 'quakus_log_level'; then
+    export QUARKUS_LOG_LEVEL=$(bashio::config 'quakus_log_level')
+fi
+
 # Start the application
 cd /app
 env | sort
