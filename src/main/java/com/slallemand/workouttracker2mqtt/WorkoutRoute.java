@@ -577,10 +577,11 @@ public class WorkoutRoute extends RouteBuilder {
                             "statistics_" + typeId + "_total_workouts",
                             capitalize(workoutType) + " Total Workouts",
                             "",
-                            "{{ value_json.totalWorkouts | default(0) }}",
+                            "{{ value_json.totalWorkouts | default(0) | int }}",
                             statisticsTopic,
-                            "measurement"
+                            null  // No device_class for count sensors
                         );
+                        log.debug("Discovery template for " + workoutType + " total workouts: {{ value_json.totalWorkouts | int | default(0) }}, state_topic: " + statisticsTopic);
                     }
                     
                     log.info("Home Assistant discovery configurations published");
@@ -803,6 +804,7 @@ public class WorkoutRoute extends RouteBuilder {
                             String typeTopic = MQTT_STATISTICS_TOPIC + "/" + typeLower;
                             log.info("Publishing statistics to MQTT topic: " + typeTopic + " (type: " + workoutType + ", workouts: " + totalWorkouts + ", distance: " + 
                                 String.format("%.2f", totalDistance / 1000) + " km)");
+                            log.debug("Home Assistant will extract value_json.totalWorkouts = " + totalWorkouts + " from JSON: " + aggregatedJson);
                             publishToMqttWithRetry(typeTopic, aggregatedJson, workoutType + " statistics", 30000, 1000);
                         }
                     })
