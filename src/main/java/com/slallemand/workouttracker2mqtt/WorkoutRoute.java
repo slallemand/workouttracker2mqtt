@@ -54,7 +54,7 @@ public class WorkoutRoute extends RouteBuilder {
     @ConfigProperty(name = "mqtt.broker.qos", defaultValue = "1")
     int mqttQos;
 
-    @ConfigProperty(name = "mqtt.broker.retained", defaultValue = "false")
+    @ConfigProperty(name = "mqtt.broker.retained", defaultValue = "true")
     boolean mqttRetained;
 
     @ConfigProperty(name = "mqtt.broker.username")
