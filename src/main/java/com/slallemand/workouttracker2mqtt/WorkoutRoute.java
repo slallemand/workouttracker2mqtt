@@ -322,7 +322,7 @@ public class WorkoutRoute extends RouteBuilder {
      * Uses retry logic to ensure the message is published even if MQTT broker is temporarily unavailable
      */
     private void publishHomeAssistantDiscovery(org.apache.camel.Exchange exchange, String sensorId, String sensorName, String unit, 
-                                                String valueTemplate, String stateTopic, String deviceClass) {
+                                                String valueTemplate, String stateTopic, String deviceClass, String stateClass) {
         if (!haDiscoveryEnabled) {
             return;
         }
@@ -337,6 +337,9 @@ public class WorkoutRoute extends RouteBuilder {
             config.put("unique_id", haDiscoveryNodeId + "_" + sensorId);
             if (deviceClass != null && !deviceClass.isEmpty()) {
                 config.put("device_class", deviceClass);
+            }
+            if (stateClass != null && !stateClass.isEmpty()) {
+                config.put("state_class", stateClass);
             }
             if (unit != null && !unit.isEmpty()) {
                 config.put("unit_of_measurement", unit);
@@ -512,7 +515,8 @@ public class WorkoutRoute extends RouteBuilder {
                             "km",
                             "{{ value_json.data.totalDistance | default(0) / 1000 }}",
                             typeTopic,
-                            "distance"
+                            "distance",
+                            null
                         );
                         
                         publishHomeAssistantDiscovery(
@@ -522,7 +526,8 @@ public class WorkoutRoute extends RouteBuilder {
                             "min",
                             "{{ value_json.data.totalDuration | default(0) / 1000000000 / 60 }}",
                             typeTopic,
-                            "duration"
+                            "duration",
+                            null
                         );
                         
                         publishHomeAssistantDiscovery(
@@ -532,6 +537,7 @@ public class WorkoutRoute extends RouteBuilder {
                             "",
                             "{{ value_json.name | default('Unknown') }}",
                             typeTopic,
+                            null,
                             null
                         );
                         
@@ -542,7 +548,8 @@ public class WorkoutRoute extends RouteBuilder {
                             "",
                             "{{ value_json.date | default('') }}",
                             typeTopic,
-                            "timestamp"
+                            "timestamp",
+                            null
                         );
                         
                         publishHomeAssistantDiscovery(
@@ -552,7 +559,8 @@ public class WorkoutRoute extends RouteBuilder {
                             "km/h",
                             "{{ value_json.data.averageSpeed | default(0) * 3.6 }}",
                             typeTopic,
-                            "speed"
+                            "speed",
+                            "measurement"
                         );
                     }
                     
@@ -569,7 +577,8 @@ public class WorkoutRoute extends RouteBuilder {
                             "km",
                             "{{ value_json.totalDistance | default(0) / 1000 }}",
                             statisticsTopic,
-                            "distance"
+                            "distance",
+                            "total"
                         );
                         
                         publishHomeAssistantDiscovery(
@@ -579,7 +588,8 @@ public class WorkoutRoute extends RouteBuilder {
                             "",
                             "{{ value_json.totalWorkouts | default(0) | int }}",
                             statisticsTopic,
-                            null  // No device_class for count sensors
+                            null,  // No device_class for count sensors
+                            "total_increasing"  // Enable graphing for counter
                         );
                         log.debug("Discovery template for " + workoutType + " total workouts: {{ value_json.totalWorkouts | int | default(0) }}, state_topic: " + statisticsTopic);
                     }
